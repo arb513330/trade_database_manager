@@ -12,13 +12,13 @@ if __name__ == "__main__":
         "--host",
         type=str,
         default="localhost",
-        description="host of both kdb and sql, will be overwritten if sqlhost or kdbhost is specified",
+        help="host of both kdb and sql, will be overwritten if sqlhost or kdbhost is specified",
     )
-    parser.add_argument("--sqlhost", type=str, default="", description="host of sql")
-    parser.add_argument("--sqldb", type=str, default="trade_data", description="database name of sql")
-    parser.add_argument("--kdbhost", type=str, default="", description="host of kdb")
-    parser.add_argument("--sqlport", type=str, default="5432", description="port of sql")
-    parser.add_argument("--kdbport", type=str, default="5000", description="port of kdb")
+    parser.add_argument("--sqlhost", type=str, default="", help="host of sql")
+    parser.add_argument("--sqldb", type=str, default="trade_data", help="database name of sql")
+    parser.add_argument("--kdbhost", type=str, default="", help="host of kdb")
+    parser.add_argument("--sqlport", type=str, default="5432", help="port of sql")
+    parser.add_argument("--kdbport", type=str, default="5000", help="port of kdb")
 
     args = parser.parse_args()
 

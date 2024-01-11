@@ -28,3 +28,7 @@ host    all            tradedbadmin     0.0.0.0/0               scram-sha-256
 host    all            tradedbadmin     ::/0                    scram-sha-256
 ```
 
+### KDB+ Initialization
+
+
+```q

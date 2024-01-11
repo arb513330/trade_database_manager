@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trade_database_manager"
-version = "0.0.1"
+version = "0.0.1.dev0"
 description = "A wrapper of kdb and sql for convenient trade data management."
 readme = "README.md"
 authors = [
@@ -23,8 +23,7 @@ classifiers = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["trade_database_manager"]
-namespaces = false
+include = ["trade_database_manager*"]
 
 [tool.pylint.basic]
 const-rgx='[a-z_][a-z0-9_]{2,30}$'
