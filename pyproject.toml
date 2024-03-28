@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trade_database_manager"
-version = "0.0.1.dev0"
+version = "0.0.1.dev1"
 description = "A wrapper of kdb and sql for convenient trade data management."
 readme = "README.md"
 authors = [
     {name = "Y.Q. Cui", email = "qianyun210603@hotmail.com"},
 ]
-dependencies = ["pandas", "numpy", "ruamel.yaml", "sqlalchemy", "psycopg2"]
+dependencies = ["pandas>=2.0.0", "numpy", "ruamel.yaml", "sqlalchemy", "psycopg2"]
 classifiers = [
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
@@ -20,6 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
 ]
 
 [tool.setuptools.packages.find]
@@ -37,7 +38,7 @@ max-line-length = "120"
 
 [tool.black]
 line-length = 120
-target-version = ['py39']
+target-version = ['py310']
 
 [tool.isort]
 profile = "black"

@@ -2,7 +2,7 @@ from functools import partial
 from typing import Literal, Sequence, Union
 
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.dialects.postgresql import insert
 import re
 from ...config import CONFIG
@@ -46,12 +46,13 @@ class SqlManager:
         other_non_unique_index_columns: Sequence[str] = (),
     ):
         if_exists: Literal["replace", "append"] = "append"
+        inspector = inspect(self.engine)
+        new_table = not inspector.has_table(table_name)
         method = (
             partial(_insert_on_conflict_update, indexes=df.index.names)
-            if upsert and self.engine.has_table(table_name)
+            if upsert and not new_table
             else None
         )
-        new_table = not self.engine.has_table(table_name)
         num_rows = df.to_sql(
             table_name,
             self.engine,
