@@ -1,4 +1,4 @@
-### Installation
+### Installation of KDB+ on Linux
 
 ## Download
 Visit [KDB](https://kx.com/kdb-personal-edition-download/)， fill in your information and wait for email from KX <downloads@marketing.kx.com> for download instruction.
@@ -16,14 +16,14 @@ Also, a license file `kc.lic` and its base64 encoding is also available. One nee
  - Type `2+3` and press enter, you should see `5` as the result;
  - Type `.z.K` and press enter, you should see a date and time string like `2020.12.31T23:59:59.999`.
 
-## Register `q` as a System Service
+## Register `q` as a System Service as a Database Server (Linux)
  - Create an environment variable file `q.env` in the same folder as `q` and `kc.lic`, and add the following lines:
    ```bash
-   printf "QHOME=/data0/kdbdata/q\nQLIC=/opt/l64/\n" | sudo tee /opt/l64/kdbenv
+   printf "QHOME=<path to q.k file (and other q script)>\nQLIC=<path to license file>\n" | sudo tee /opt/l64/kdbenv
    ```
-- Create a service file `q.service` in `/etc/systemd/system/` and add the following lines:
+- Create a service file `kdb.service` in `/etc/systemd/system/` and add the following lines:
   ```bash
-  sudo vim /etc/systemd/system/q.service
+  sudo vim /etc/systemd/system/kdb.service
   ```
   ```ini
   [Unit]
@@ -32,9 +32,10 @@ Also, a license file `kc.lic` and its base64 encoding is also available. One nee
    
   [Service]
   EnvironmentFile=/opt/l64/kdbenv
-  ExecStart=/opt/l64/q -p 5001
-  User=youruser
-  Group=yourgroup
+  ExecStart=/opt/l64/q -p 5000
+  WorkingDirectory=<path to data folder>
+  User=<username>
+  Group=<group>
   Restart=always
   RestartSec=1
    
