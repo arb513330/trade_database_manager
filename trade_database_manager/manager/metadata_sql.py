@@ -5,7 +5,7 @@
 # @Purpose : Instrument metadata stored in SQL database
 
 from collections.abc import Container
-from typing import Union
+from typing import Union, cast
 
 import pandas as pd
 
@@ -14,6 +14,7 @@ from .typedefs import EXCHANGE_LITERALS, INST_TYPE_LITERALS, Opt_T_SeqT, T_DictT
 
 COMMON_METADATA_COLUMNS = [
     "name",
+    "trading_code",
     "inst_type",
     "currency",
     "timezone",
@@ -25,15 +26,33 @@ COMMON_METADATA_COLUMNS = [
     "delisted_date",
 ]
 TYPE_METADATA_COLUMNS = {
-    "STK": ["sector", "industry", "country", "state", "board_type"],
+    "STK": ["sector", "industry", "country", "state", "board_type", "issue_price"],
 }
 
 
 class MetadataSql:
-    def __init__(self):
-        self.manager = SqlManager()
+    """
+    This class is used to manage instrument metadata stored in an SQL database.
+
+    This is a singleton class. Just call MetadataSql() to get the instance.
+    """
+
+    _instance = None
+    _manager = None
+
+    def __new__(cls):
+        if not isinstance(cls._instance, cls):
+            cls._instance = super(MetadataSql, cls).__new__(cls)
+            cls._manager = SqlManager()
+        return cls._instance
 
     def update_instrument_metadata(self, data: Union[pd.DataFrame, list[dict], dict]):
+        """
+        Updates the instrument metadata in the database.
+
+        :param data: The data to be updated. It can be a DataFrame, a list of dictionaries, or a single dictionary.
+        :type data: Union[pd.DataFrame, list[dict], dict]
+        """
         type_specific_columns = set(data.columns) - set(COMMON_METADATA_COLUMNS)
         if "inst_type" not in data.columns and bool(type_specific_columns):
             raise ValueError(
@@ -43,15 +62,23 @@ class MetadataSql:
             data = [data]
         if isinstance(data, list):
             data = pd.DataFrame(data)
-        data.set_index(["ticker", "exchange"], inplace=True)
+        if "ticker" in data.columns and "exchange" in data.columns:
+            data.set_index(["ticker", "exchange"], inplace=True)
+        else:
+            assert set(data.index.names) == {"ticker", "exchange"}, "Index names must be 'ticker' and 'exchange'."
         data_common = data[data.columns.intersection(COMMON_METADATA_COLUMNS)]
 
-        self.manager.insert("instruments", data_common, upsert=True)
+        self._manager.insert("instruments", data_common, upsert=True)
         if "inst_type" in data.columns:
             for inst_type, columns in TYPE_METADATA_COLUMNS.items():
                 data_type_df = data.loc[data.inst_type == inst_type, data.columns.intersection(columns)]
                 if not data_type_df.empty:
-                    self.manager.insert(f"instruments_{inst_type.lower()}", data_type_df, upsert=True)
+                    self._manager.insert(f"instruments_{inst_type.lower()}", data_type_df, upsert=True)
+
+    def _convert_datetime_columns(self, data: pd.DataFrame):
+        for col in ["listed_date", "delisted_date"]:
+            if col in data.columns:
+                data[col] = data[col].apply(pd.to_datetime)
 
     def read_metadata(
         self,
@@ -60,11 +87,25 @@ class MetadataSql:
         query_fields="*",
         filter_fields=None,
     ) -> T_DictT[pd.DataFrame]:
+        """
+        Reads metadata from the database based on the provided filters.
+
+        :param ticker: The ticker(s) to filter by. It can be a single ticker or a sequence of tickers. Defaults to None.
+        :type ticker: Opt_T_SeqT[str], optional
+        :param exchange: The exchange(s) to filter by. It can be a single exchange or a sequence of exchanges. Defaults to None.
+        :type exchange: Opt_T_SeqT[EXCHANGE_LITERALS], optional
+        :param query_fields: The fields to query. By default, it queries all fields. Defaults to "*".
+        :type query_fields: str, optional
+        :param filter_fields: Additional fields to filter by. The keys are the field names and the values are the filter values. Defaults to None.
+        :type filter_fields: dict, optional
+        :return: A dictionary of DataFrames containing the queried metadata.
+        :rtype: T_DictT[pd.DataFrame]
+        """
         filter_fields = filter_fields or {}
         if ticker is not None:
             filter_fields["ticker"] = ticker
         if exchange is not None:
-            if not isinstance(exchange, str) and isinstance(exchange, Container):
+            if not isinstance(exchange, str) and isinstance(exchange, Container) and ticker is not None:
                 assert len(exchange) == len(ticker), "Exchange must be a single value or the same length as ticker."
             filter_fields["exchange"] = exchange
         query_fields_common = (
@@ -82,11 +123,15 @@ class MetadataSql:
         )
         if not (query_fields == "*" or "inst_type" in query_fields):
             query_fields_common.append("inst_type")
-        common_df = self.manager.read_data("instruments", query_fields=query_fields_common, filter_fields=filter_fields)
+        common_df = self._manager.read_data(
+            "instruments", query_fields=query_fields_common, filter_fields=filter_fields
+        )
+        self._convert_datetime_columns(common_df)
         if common_df.empty:
             return {}
         res = {}
         for inst_type, common_df_by_type in common_df.groupby("inst_type"):
+            inst_type = cast(INST_TYPE_LITERALS, inst_type)
             if all_fields_common:
                 res[inst_type] = common_df_by_type
                 continue
@@ -98,7 +143,7 @@ class MetadataSql:
             filter_fields_type = {k: v for k, v in filter_fields.items() if k in TYPE_METADATA_COLUMNS[inst_type]}
             filter_fields_type["ticker"] = common_df_by_type["ticker"].to_list()
             filter_fields_type["exchange"] = common_df_by_type["exchange"].to_list()
-            type_df = self.manager.read_data(
+            type_df = self._manager.read_data(
                 f"instruments_{inst_type.lower()}", query_fields=query_fields_type, filter_fields=filter_fields_type
             )
             type_df = common_df_by_type.merge(type_df, on=["ticker", "exchange"], how="inner")
@@ -113,12 +158,28 @@ class MetadataSql:
         query_fields="*",
         filter_fields=None,
     ) -> pd.DataFrame:
+        """
+        Reads metadata for a specific instrument type from the database based on the provided filters.
+
+        :param inst_type: The instrument type to filter by.
+        :type inst_type: INST_TYPE_LITERALS
+        :param ticker: The ticker(s) to filter by. It can be a single ticker or a sequence of tickers. Defaults to None.
+        :type ticker: Opt_T_SeqT[str], optional
+        :param exchange: The exchange(s) to filter by. It can be a single exchange or a sequence of exchanges. Defaults to None.
+        :type exchange: Opt_T_SeqT[EXCHANGE_LITERALS], optional
+        :param query_fields: The fields to query. By default, it queries all fields. Defaults to "*".
+        :type query_fields: str, optional
+        :param filter_fields: Additional fields to filter by. The keys are the field names and the values are the filter values. Defaults to None.
+        :type filter_fields: dict, optional
+        :return: A DataFrame containing the queried metadata for the specified instrument type.
+        :rtype: pd.DataFrame
+        """
         filter_fields = filter_fields or {}
         filter_fields["inst_type"] = inst_type
         if ticker is not None:
             filter_fields["ticker"] = ticker
         if exchange is not None:
-            if not isinstance(exchange, str) and isinstance(exchange, Container):
+            if not isinstance(exchange, str) and isinstance(exchange, Container) and ticker is not None:
                 assert len(exchange) == len(ticker), "Exchange must be a single value or the same length as ticker."
             filter_fields["exchange"] = exchange
 
@@ -144,12 +205,16 @@ class MetadataSql:
             "instruments": filter_fields_common,
             f"instruments_{inst_type.lower()}": filter_fields_type,
         }
-        df = self.manager.read_data_across_tables(
+        df = self._manager.read_data_across_tables(
             ["instruments", f"instruments_{inst_type.lower()}"],
             joined_columns=["ticker", "exchange"],
             query_fields=query_fields_cross,
             filter_fields=filter_fields_cross,
         )
+
         if isinstance(df.columns, pd.Index):
-            return df.loc[:, ~df.columns.duplicated()].set_index(["ticker", "exchange"])
-        return df.set_index(["ticker", "exchange"])
+            df = df.loc[:, ~df.columns.duplicated()].set_index(["ticker", "exchange"])
+        else:
+            df = df.set_index(["ticker", "exchange"])
+        self._convert_datetime_columns(df)
+        return df

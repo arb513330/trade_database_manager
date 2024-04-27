@@ -4,7 +4,7 @@ from functools import partial, reduce
 from typing import Any, Literal, Sequence, Type, Union
 
 import pandas as pd
-from sqlalchemy import Float, Index, Integer, MetaData, String, Table, create_engine, inspect, select, sql, text
+from sqlalchemy import REAL, Index, Integer, MetaData, String, Table, create_engine, inspect, select, sql, text
 from sqlalchemy.dialects.postgresql import insert
 
 from ...config import CONFIG
@@ -27,6 +27,12 @@ def _insert_on_conflict_nothing(table, conn, keys, data_iter):
 
 
 class SqlManager:
+    """
+    This class is used to manage SQL operations.
+
+    :ivar sqlalchemy.engine.Engine engine: An instance of the SQLAlchemy Engine class for executing SQL operations.
+    """
+
     def __init__(self):
         self.engine = create_engine(CONFIG["sqlconnstr"])
 
@@ -37,12 +43,20 @@ class SqlManager:
             return conn.execute(sql_executable)
 
     def add_index(self, table_name: str, columns: Union[str, list[str]], unique: bool = True):
+        """
+        Adds an index to a table.
+
+        :param table_name: The name of the table to add the index to.
+        :type table_name: str
+        :param columns: The column(s) to include in the index. It can be a single column name or a list of column names.
+        :type columns: Union[str, list[str]]
+        :param unique: Whether the index should enforce unique values. Defaults to True.
+        :type unique: bool
+        """
         if isinstance(columns, str):
             columns = [columns]
 
         index_name = f"uix_{table_name}_{'_'.join(columns)}"
-        columns_str = ", ".join(columns)
-        unique_str = "UNIQUE" if unique else ""
         table_meta = MetaData()
         table = Table(table_name, table_meta, autoload_with=self.engine)
         columns = [getattr(table.c, colname) for colname in columns if colname in table.c.keys()]
@@ -57,6 +71,22 @@ class SqlManager:
         other_unique_index_columns: Sequence[str] = (),
         other_non_unique_index_columns: Sequence[str] = (),
     ):
+        """
+        Inserts data into a table.
+
+        :param table_name: The name of the table to insert data into.
+        :type table_name: str
+        :param df: The data to insert. It should be a DataFrame where the column names match the table columns.
+        :type df: pd.DataFrame
+        :param upsert: Whether to update the table if the data already exists. Defaults to True.
+        :type upsert: bool
+        :param other_unique_index_columns: Other columns to enforce unique values on. Defaults to an empty sequence.
+        :type other_unique_index_columns: Sequence[str]
+        :param other_non_unique_index_columns: Other columns to add non-unique indexes to. Defaults to an empty sequence.
+        :type other_non_unique_index_columns: Sequence[str]
+        :return: The number of rows inserted.
+        :rtype: int
+        """
         if_exists: Literal["replace", "append"] = "append"
         inspector = inspect(self.engine)
         new_table = not inspector.has_table(table_name)
@@ -78,25 +108,55 @@ class SqlManager:
         return num_rows
 
     def _convert_to_sqlalchemy_type(self, column_type: Type, **kwargs):
-        if isinstance(column_type, str):
-            column_type = type(column_type)
-        if column_type == str:
+        if isinstance(column_type, type):
+            column_type = column_type.__name__
+        if column_type == "str":
             return String(**kwargs)
-        if column_type == int:
+        if column_type == "int":
             return Integer()
-        if column_type == float:
-            return Float()
+        if column_type == "float":
+            return REAL()
         raise ValueError(f"Unsupported column type {column_type}")
 
     def insert_column(self, table_name: str, column_name: str, column_type: Union[str, Type], type_kwargs: dict = None):
+        """
+        Inserts a new column into a table.
+
+        :param table_name: The name of the table to insert the column into.
+        :type table_name: str
+        :param column_name: The name of the new column.
+        :type column_name: str
+        :param column_type: The data type of the new column. It can be a string or a Python type.
+        :type column_type: Union[str, Type]
+        :param type_kwargs: Additional keyword arguments for the data type. Defaults to None.
+        :type type_kwargs: dict, optional
+        """
         type_kwargs = type_kwargs or {}
         sql_code = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {str(self._convert_to_sqlalchemy_type(column_type, **type_kwargs))}"
         self._execute(sql_code)
 
     def delete_column(self, table_name: str, column_name: str):
+        """
+        Deletes a column from a table.
+
+        :param table_name: The name of the table to delete the column from.
+        :type table_name: str
+        :param column_name: The name of the column to delete.
+        :type column_name: str
+        """
         self._execute(f"ALTER TABLE {table_name} DROP COLUMN {column_name}")
 
     def rename_column(self, table_name: str, old_column_name: str, new_column_name: str):
+        """
+        Renames a column in a table.
+
+        :param table_name: The name of the table containing the column to rename.
+        :type table_name: str
+        :param old_column_name: The current name of the column.
+        :type old_column_name: str
+        :param new_column_name: The new name for the column.
+        :type new_column_name: str
+        """
         # check if any index is referring to the column
         sql_code = f"SELECT indexname, indexdef FROM pg_indexes WHERE indexdef LIKE '%%(%%{old_column_name}%%)%%' and tablename = '{table_name}'"
         index_refering_column = dict(self.engine.execute(sql_code).fetchall())
@@ -154,6 +214,19 @@ class SqlManager:
         return pd.DataFrame(res.fetchall(), columns=res.keys())
 
     def read_data(self, table_name: str, query_fields: QUERYFIELD_TYPE = "*", filter_fields=None):
+        """
+        Reads data from a table.
+
+        :param table_name: The name of the table to read data from.
+        :type table_name: str
+        :param query_fields: The fields to query. By default, it queries all fields. Defaults to "*".
+        :type query_fields: QUERYFIELD_TYPE, optional
+        :param filter_fields: Additional fields to filter by. The keys are the field names and the values are the filter values. Defaults to None.
+        :type filter_fields: dict, optional
+        :return: A DataFrame containing the queried data.
+        :rtype: pd.DataFrame
+        """
+
         meta = MetaData()
         table = Table(table_name, meta, autoload_with=self.engine)
 
@@ -177,6 +250,7 @@ class SqlManager:
 
         # cannot use pandas.read_sql here as it discards timezone info
         res = self._execute(stmt)
+        pd.read_sql_query()
         return pd.DataFrame(res.fetchall(), columns=res.keys())
 
     def read_data_across_tables(
@@ -186,6 +260,20 @@ class SqlManager:
         query_fields: QUERYFIELD_TYPE = "*",
         filter_fields: FILTERFIELD_TYPE = None,
     ):
+        """
+        Reads data from multiple tables.
+
+        :param table_names: The names of the tables to read data from.
+        :type table_names: Sequence[str]
+        :param joined_columns: The columns to join the tables on.
+        :type joined_columns: Sequence[str]
+        :param query_fields: The fields to query. By default, it queries all fields. Defaults to "*".
+        :type query_fields: QUERYFIELD_TYPE, optional
+        :param filter_fields: Additional fields to filter by. The keys are the field names and the values are the filter values. Defaults to None.
+        :type filter_fields: FILTERFIELD_TYPE, optional
+        :return: A DataFrame containing the queried data.
+        :rtype: pd.DataFrame
+        """
         meta = MetaData()
         tables = {table_name: Table(table_name, meta, autoload_with=self.engine) for table_name in table_names}
 

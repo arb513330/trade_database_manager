@@ -3,3 +3,7 @@
 # @Author  : YQ Tsui
 # @File    : __init__.py
 # @Purpose :
+
+from .metadata_sql import MetadataSql
+
+__all__ = ("MetadataSql",)
