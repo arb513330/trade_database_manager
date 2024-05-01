@@ -133,7 +133,7 @@ class MetadataSql:
         for inst_type, common_df_by_type in common_df.groupby("inst_type"):
             inst_type = cast(INST_TYPE_LITERALS, inst_type)
             if all_fields_common:
-                res[inst_type] = common_df_by_type
+                res[inst_type] = common_df_by_type.set_index(["ticker", "exchange"]) if len(common_df_by_type.columns) > 2 else common_df_by_type
                 continue
             query_fields_type = (
                 ["ticker", "exchange"] + [f for f in query_fields if f in TYPE_METADATA_COLUMNS[inst_type]]
@@ -147,7 +147,7 @@ class MetadataSql:
                 f"instruments_{inst_type.lower()}", query_fields=query_fields_type, filter_fields=filter_fields_type
             )
             type_df = common_df_by_type.merge(type_df, on=["ticker", "exchange"], how="inner")
-            res[inst_type] = type_df.set_index(["ticker", "exchange"])
+            res[inst_type] = type_df.set_index(["ticker", "exchange"]) if len(type_df.columns) > 2 else type_df
         return res
 
     def read_metadata_for_insttype(
@@ -187,9 +187,7 @@ class MetadataSql:
             query_fields_cross = "*"
         else:
             query_fields_common = ["ticker", "exchange"] + [f for f in query_fields if f in COMMON_METADATA_COLUMNS]
-            query_fields_type = ["ticker", "exchange"] + [
-                f for f in query_fields if f in TYPE_METADATA_COLUMNS[inst_type]
-            ]
+            query_fields_type = [f for f in query_fields if f in TYPE_METADATA_COLUMNS[inst_type]]
             query_fields_cross = {
                 "instruments": query_fields_common,
                 f"instruments_{inst_type.lower()}": query_fields_type,
@@ -213,8 +211,8 @@ class MetadataSql:
         )
 
         if isinstance(df.columns, pd.Index):
-            df = df.loc[:, ~df.columns.duplicated()].set_index(["ticker", "exchange"])
-        else:
-            df = df.set_index(["ticker", "exchange"])
+            df = df.loc[:, ~df.columns.duplicated()]
+        if len(df.columns) > 2:
+            df.set_index(["ticker", "exchange"], inplace=True)
         self._convert_datetime_columns(df)
         return df
