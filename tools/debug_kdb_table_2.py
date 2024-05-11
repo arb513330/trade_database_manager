@@ -4,7 +4,7 @@ from arctic.date import DateRange
 from arctic import Arctic
 from arctic.auth import Credential
 from arctic.hooks import register_get_auth_hook
-from trade_database_manager.manager import MetadataSql
+# from trade_database_manager.manager import MetadataSql
 from loguru import logger
 from functools import partial
 import json
@@ -61,16 +61,19 @@ if __name__ == "__main__":
     )
     barlib = arctic_store.get_library("bar_data")
     limit_lib = arctic_store.get_library("limit_up_down")
+    metalib = arctic_store.get_library("stock_meta")
 
-    all_cn_stock = MetadataSql().read_metadata_for_insttype(
-        "STK", exchange=["SSE", "SZSE"], query_fields=["ticker", "exchange", "delisted_date"]
-    )
-    all_cn_stock = all_cn_stock[all_cn_stock.delisted_date > "2013-12-31"].sort_index(level="ticker")
+    # all_cn_stock = MetadataSql().read_metadata_for_insttype(
+    #     "STK", exchange=["SSE", "SZSE"], query_fields=["ticker", "exchange", "delisted_date"]
+    # )
+    # all_cn_stock = all_cn_stock[all_cn_stock.delisted_date > "2013-12-31"].sort_index(level="ticker")
+    all_stock = sorted([x for x in metalib.list_symbols() if "SZSE" in x or "SSE" in x])
+    all_stock = [x.split('_') for x in all_stock]
 
     kdb_mgr = KdbManager.instance()
 
     errors = []
-    for ticker, exch in all_cn_stock.index.values[0:1000]:
+    for ticker, exch in all_stock[0:1000]:
         interval = "1m"
         try:
             logger.info(f"reading {ticker} {exch} {interval}")
@@ -83,5 +86,5 @@ if __name__ == "__main__":
         except Exception:
             logger.info(f"error {ticker} {exch} {interval}")
             errors.append((ticker, exch))
-            raise
+
     print(errors)
