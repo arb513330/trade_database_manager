@@ -15,6 +15,9 @@ Also, a license file `kc.lic` and its base64 encoding is also available. One nee
  - Open a terminal, type `q` and press enter, you should see a welcome message and a `q)` prompt;
  - Type `2+3` and press enter, you should see `5` as the result;
  - Type `.z.K` and press enter, you should see a date and time string like `2020.12.31T23:59:59.999`.
+ 
+## Utility Scripts
+   Put the `trade_database_manager/core/kdb/qscripts/q.q` file in `QHOME` folder, so that the utility scripts loaded automatically when `q` starts.
 
 ## Register `q` as a System Service as a Database Server (Linux)
  - Create an environment variable file `q.env` in the same folder as `q` and `kc.lic`, and add the following lines:
@@ -33,8 +36,6 @@ Also, a license file `kc.lic` and its base64 encoding is also available. One nee
    ```bash
    printf "username:password" | sudo tee /var/lib/kdb/q/userpass
    ```
-
-
 
  - Create a service file `kdb.service` in `/etc/systemd/system/` and add the following lines:
       ```bash
@@ -58,7 +59,5 @@ Also, a license file `kc.lic` and its base64 encoding is also available. One nee
       WantedBy=multi-user.target
       ```
       - If no authentication is needed, remove `-U <path to userpass file> -u 1` from `ExecStart` line.
-
-
 
 
