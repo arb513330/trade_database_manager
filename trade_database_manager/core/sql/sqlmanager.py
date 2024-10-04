@@ -1,10 +1,16 @@
+# -*- coding: utf-8 -*-
+# @Time    : 2024/4/15 20:28
+# @Author  : YQ Tsui
+# @File    : sqlmanager.py
+# @Purpose : Core SQL operations
+
 import re
 from collections.abc import Container
 from functools import partial, reduce
 from typing import Any, Literal, Sequence, Type, Union
 
 import pandas as pd
-from sqlalchemy import REAL, Index, Integer, MetaData, String, Table, create_engine, inspect, select, sql, text
+from sqlalchemy import DOUBLE_PRECISION, Index, Integer, MetaData, String, Table, create_engine, inspect, select, sql, text
 from sqlalchemy.dialects.postgresql import insert
 
 from ...config import CONFIG
@@ -107,7 +113,8 @@ class SqlManager:
                 self.add_index(table_name, column, unique=False)
         return num_rows
 
-    def _convert_to_sqlalchemy_type(self, column_type: Type, **kwargs):
+    @staticmethod
+    def _convert_to_sqlalchemy_type(column_type: Type, **kwargs):
         if isinstance(column_type, type):
             column_type = column_type.__name__
         if column_type == "str":
@@ -115,10 +122,10 @@ class SqlManager:
         if column_type == "int":
             return Integer()
         if column_type == "float":
-            return REAL()
+            return DOUBLE_PRECISION()
         raise ValueError(f"Unsupported column type {column_type}")
 
-    def insert_column(self, table_name: str, column_name: str, column_type: Union[str, Type], type_kwargs: dict = None):
+    def insert_column(self, table_name: str, column_name: str, column_type: str):
         """
         Inserts a new column into a table.
 
@@ -126,13 +133,10 @@ class SqlManager:
         :type table_name: str
         :param column_name: The name of the new column.
         :type column_name: str
-        :param column_type: The data type of the new column. It can be a string or a Python type.
-        :type column_type: Union[str, Type]
-        :param type_kwargs: Additional keyword arguments for the data type. Defaults to None.
-        :type type_kwargs: dict, optional
+        :param column_type: The data type of the new column. It is a string representation of the data type in PostgreSQL.
+        :type column_type: str
         """
-        type_kwargs = type_kwargs or {}
-        sql_code = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {str(self._convert_to_sqlalchemy_type(column_type, **type_kwargs))}"
+        sql_code = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
         self._execute(sql_code)
 
     def delete_column(self, table_name: str, column_name: str):
@@ -250,7 +254,6 @@ class SqlManager:
 
         # cannot use pandas.read_sql here as it discards timezone info
         res = self._execute(stmt)
-        pd.read_sql_query()
         return pd.DataFrame(res.fetchall(), columns=res.keys())
 
     def read_data_across_tables(
@@ -310,3 +313,38 @@ class SqlManager:
         # cannot use pandas.read_sql here as it discards timezone info
         res = self._execute(stmt)
         return pd.DataFrame(res.fetchall(), columns=res.keys())
+
+    def create_ts_table(self, table_name: str, time_column: str, table_columns: dict[str, str],
+                        time_chunk_interval: str = "1 year", other_chunkers: dict[str, int] = None):
+        """
+        Creates a table with a timestamp column.
+
+        :param table_name: The name of the table to create.
+        :type table_name: str
+        :param time_column: The name of the timestamp column.
+        :type time_column: str
+        :param table_columns: The names of the columns to create with their data types. The keys are the column names and the values are the data types in PostgreSQL.
+        :type table_columns: Dict[str, str]
+        :param time_chunk_interval: The interval to chunk the time column by. Defaults to "1 year".
+        :type time_chunk_interval: str
+        :param other_chunkers: Other columns to chunk by. The keys are the column names and the values are the num of hashes. Defaults to None.
+        :type other_chunkers: Dict[str, int], optional
+        """
+        query_create_sensordata_table  = f"""
+        CREATE TABLE {table_name} (
+        {time_column} TIMESTAMP NOT NULL,
+        {", ".join([f"{column_name} {column_type}{' NOT NULL' if column_name in other_chunkers else ''}" for column_name, column_type in table_columns.items()])}
+        );
+        """
+        query_create_sensordata_hypertable = f"SELECT create_hypertable('{table_name}', by_range('{time_column}', INTERVAL '{time_chunk_interval}'));"
+        if other_chunkers is not None:
+            for column_name, num_hash in other_chunkers.items():
+                query_create_sensordata_hypertable += f"\nSELECT add_dimension('{table_name}', by_hash('{column_name}', {num_hash}));"
+
+        uidx_name = f"uix_{table_name}_{'_'.join(other_chunkers.keys())}_{time_column}"
+        query_unique_index = f"CREATE UNIQUE INDEX {uidx_name} ON {table_name} ({', '.join(other_chunkers.keys())}, {time_column});"
+        with self.engine.connect() as conn:
+            conn.execute(text(query_create_sensordata_table))
+            conn.execute(text(query_create_sensordata_hypertable))
+            conn.execute(text(query_unique_index))
+            conn.commit()
