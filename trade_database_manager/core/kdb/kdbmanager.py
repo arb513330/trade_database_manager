@@ -17,7 +17,6 @@ class KdbManager:
     def instance(cls):
         if cls._instance is None:
             cls._instance = cls()
-            cls._instance.__init__()
         return cls._instance
 
     def __init__(self):
@@ -47,7 +46,7 @@ class KdbManager:
         :type path: str
         """
         with pykx.QConnection(self.host, self.port, username=self.username, password=self.password) as conn:
-            conn(f".path.mkdir \"{path}\"")
+            conn(f'.path.mkdir "{path}"')
 
     def write(self, table_name: str, data: pd.DataFrame, path: str = "", splayed: bool = False):
         """
@@ -69,7 +68,9 @@ class KdbManager:
         with pykx.QConnection(self.host, self.port, username=self.username, password=self.password) as conn:
             conn(f"{{`:{real_path}/ set x}}", data)
 
-    def write_partitioned(self, table_name: str, data: pd.DataFrame, path: str = "", partition_func=None, key_column=None):
+    def write_partitioned(
+        self, table_name: str, data: pd.DataFrame, path: str = "", partition_func=None, key_column=None
+    ):
         """
         Writes data to the kdb database with partitioning.
 
@@ -89,16 +90,31 @@ class KdbManager:
         assert "datetime" in data.columns, "datetime column not found"
         data.sort_values(by="datetime", inplace=True)
         if key_column is not None and key_column in data.columns:
-            with pykx.QConnection(host=self.host, port=self.port, username=self.username, password=self.password) as conn:
+            with pykx.QConnection(
+                host=self.host, port=self.port, username=self.username, password=self.password
+            ) as conn:
                 for bucket, df in data.groupby(partition_func(data["datetime"])):
-                    conn(f'{{`{table_name} set x; .partable.createOrAppend[`:{path};{bucket};`{key_column};`{table_name}]}}', df.reset_index(drop=True))
+                    conn(
+                        f"{{`{table_name} set x; .partable.createOrAppend[`:{path};{bucket};`{key_column};`{table_name}]}}",
+                        df.reset_index(drop=True),
+                    )
         else:
-            with pykx.QConnection(host=self.host, port=self.port, username=self.username, password=self.password) as conn:
+            with pykx.QConnection(
+                host=self.host, port=self.port, username=self.username, password=self.password
+            ) as conn:
                 for bucket, df in data.groupby(by=partition_func(data["datetime"])):
-                    conn(f'{{`{table_name} set x;.Q.dpt[`:{path};{bucket};`{table_name}]}}', df.reset_index(drop=True))
+                    conn(f"{{`{table_name} set x;.Q.dpt[`:{path};{bucket};`{table_name}]}}", df.reset_index(drop=True))
 
-    def read_partitioned(self, table_name: str, path: str = "", fields=None, start_time=None, end_time=None, partition_func=None,
-                         other_conditions=None):
+    def read_partitioned(
+        self,
+        table_name: str,
+        path: str = "",
+        fields=None,
+        start_time=None,
+        end_time=None,
+        partition_func=None,
+        other_conditions=None,
+    ):
         """
         Reads data from the kdb database with partitioning.
 
@@ -120,28 +136,36 @@ class KdbManager:
         end_time_str = end_time.strftime(time_format) if end_time is not None else None
         if isinstance(fields, (bytes, str)):
             fields = [fields]
-        select_clause = f"select from {table_name}" if fields is None else f"select {','.join(fields)} from {table_name}"
+        select_clause = (
+            f"select from {table_name}" if fields is None else f"select {','.join(fields)} from {table_name}"
+        )
         where_cond = ""
         if start_time_str is not None and end_time_str is not None:
             where_cond += f"datetime within ({start_time_str};{end_time_str})"
             if partition_func is not None:
-                where_cond = f"int in {' '.join(str(x) for x in range(partition_func(start_time), partition_func(end_time) + 1))}" + ',' + where_cond
+                where_cond = (
+                    f"int in {' '.join(str(x) for x in range(partition_func(start_time), partition_func(end_time) + 1))}"
+                    + ","
+                    + where_cond
+                )
         elif start_time_str is not None:
             where_cond += f"datetime>={start_time_str}"
             if partition_func is not None:
-                where_cond = f"int>={partition_func(start_time)}" + ',' + where_cond
+                where_cond = f"int>={partition_func(start_time)}" + "," + where_cond
         elif end_time_str is not None:
             where_cond += f"datetime<={end_time_str}"
             if partition_func is not None:
-                where_cond = f"int<= {partition_func(end_time)}" + ',' + where_cond
+                where_cond = f"int<= {partition_func(end_time)}" + "," + where_cond
         if other_conditions is not None:
-            where_cond = other_conditions if where_cond == "" else where_cond + ',' + other_conditions
+            where_cond = other_conditions if where_cond == "" else where_cond + "," + other_conditions
         if where_cond:
             where_cond = " where " + where_cond
         final_query = select_clause + where_cond
 
         with pykx.QConnection(host=self.host, port=self.port, username=self.username, password=self.password) as conn:
-            conn("`currpath__ set .path.pwd[]") # save current path to currpath__ as following command will change the path
+            conn(
+                "`currpath__ set .path.pwd[]"
+            )  # save current path to currpath__ as following command will change the path
             try:
                 conn(f"\\l {path}")  # load the path
                 q_table = conn(final_query)

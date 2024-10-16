@@ -7,10 +7,11 @@
 import re
 from collections.abc import Container
 from functools import partial, reduce
-from typing import Any, Literal, Sequence, Type, Union
+from typing import Any, Literal, Sequence, Union
 
 import pandas as pd
-from sqlalchemy import DOUBLE_PRECISION, Index, Integer, MetaData, String, Table, create_engine, inspect, select, sql, text
+from sqlalchemy import Index, MetaData, Table, Column, create_engine, inspect, select, sql, text
+from sqlalchemy.types import TypeEngine
 from sqlalchemy.dialects.postgresql import insert
 
 from ...config import CONFIG
@@ -41,6 +42,13 @@ class SqlManager:
 
     def __init__(self):
         self.engine = create_engine(CONFIG["sqlconnstr"])
+        self._inspector = None
+
+    @property
+    def inspector(self):
+        if self._inspector is None:
+            self._inspector = inspect(self.engine)
+        return self._inspector
 
     def _execute(self, sql_executable: Union[str, sql.base.Executable]) -> Any:
         if isinstance(sql_executable, str):
@@ -94,8 +102,7 @@ class SqlManager:
         :rtype: int
         """
         if_exists: Literal["replace", "append"] = "append"
-        inspector = inspect(self.engine)
-        new_table = not inspector.has_table(table_name)
+        new_table = not self.inspector.has_table(table_name)
         method = partial(_insert_on_conflict_update, indexes=df.index.names) if upsert and not new_table else None
         num_rows = df.to_sql(
             table_name,
@@ -113,17 +120,44 @@ class SqlManager:
                 self.add_index(table_name, column, unique=False)
         return num_rows
 
-    @staticmethod
-    def _convert_to_sqlalchemy_type(column_type: Type, **kwargs):
-        if isinstance(column_type, type):
-            column_type = column_type.__name__
-        if column_type == "str":
-            return String(**kwargs)
-        if column_type == "int":
-            return Integer()
-        if column_type == "float":
-            return DOUBLE_PRECISION()
-        raise ValueError(f"Unsupported column type {column_type}")
+    def table_exists(self, table_name: str) -> bool:
+        """
+        Checks if a table exists.
+
+        :param table_name: The name of the table to check for.
+        :type table_name: str
+        :return: True if the table exists, False otherwise.
+        :rtype: bool
+        """
+        return self.inspector.has_table(table_name)
+
+    def create_table(
+        self,
+        table_name: str,
+        table_columns: list[tuple[str, TypeEngine]],
+        unique_index_columns: Sequence[str] = (),
+        primary_key: Union[str, set[str]] = set(),
+    ):
+        """
+        Creates a table.
+
+        :param table_name: The name of the table to create.
+        :type table_name: str
+        :param table_columns: The names of the columns to create with their data types. The keys are the column names and the values are the data types.
+        :type table_columns: dict[str, Type]
+        :param unique_index_columns: Columns to enforce unique values on. Defaults to an empty sequence.
+        :type unique_index_columns: Sequence[str]
+        :param primary_key: The primary key(s) of the table. Defaults to an empty set.
+        :type primary_key: Union[str,set[str]]
+        """
+        table_meta = MetaData()
+        if isinstance(primary_key, str):
+            primary_key = {primary_key}
+        columns = [Column(name, col_type, primary_key=name in primary_key) for name, col_type in table_columns]
+        table = Table(table_name, table_meta, *columns)
+        table.create(self.engine)
+        for column in unique_index_columns:
+            self.add_index(table_name, column, unique=True)
 
     def insert_column(self, table_name: str, column_name: str, column_type: str):
         """
@@ -314,8 +348,14 @@ class SqlManager:
         res = self._execute(stmt)
         return pd.DataFrame(res.fetchall(), columns=res.keys())
 
-    def create_ts_table(self, table_name: str, time_column: str, table_columns: dict[str, str],
-                        time_chunk_interval: str = "1 year", other_chunkers: dict[str, int] = None):
+    def create_ts_table(
+        self,
+        table_name: str,
+        time_column: str,
+        table_columns: dict[str, str],
+        time_chunk_interval: str = "1 year",
+        other_chunkers: dict[str, int] = None,
+    ):
         """
         Creates a table with a timestamp column.
 
@@ -330,19 +370,25 @@ class SqlManager:
         :param other_chunkers: Other columns to chunk by. The keys are the column names and the values are the num of hashes. Defaults to None.
         :type other_chunkers: Dict[str, int], optional
         """
-        query_create_sensordata_table  = f"""
+        query_create_sensordata_table = f"""
         CREATE TABLE {table_name} (
         {time_column} TIMESTAMP NOT NULL,
         {", ".join([f"{column_name} {column_type}{' NOT NULL' if column_name in other_chunkers else ''}" for column_name, column_type in table_columns.items()])}
         );
         """
-        query_create_sensordata_hypertable = f"SELECT create_hypertable('{table_name}', by_range('{time_column}', INTERVAL '{time_chunk_interval}'));"
+        query_create_sensordata_hypertable = (
+            f"SELECT create_hypertable('{table_name}', by_range('{time_column}', INTERVAL '{time_chunk_interval}'));"
+        )
         if other_chunkers is not None:
             for column_name, num_hash in other_chunkers.items():
-                query_create_sensordata_hypertable += f"\nSELECT add_dimension('{table_name}', by_hash('{column_name}', {num_hash}));"
+                query_create_sensordata_hypertable += (
+                    f"\nSELECT add_dimension('{table_name}', by_hash('{column_name}', {num_hash}));"
+                )
 
         uidx_name = f"uix_{table_name}_{'_'.join(other_chunkers.keys())}_{time_column}"
-        query_unique_index = f"CREATE UNIQUE INDEX {uidx_name} ON {table_name} ({', '.join(other_chunkers.keys())}, {time_column});"
+        query_unique_index = (
+            f"CREATE UNIQUE INDEX {uidx_name} ON {table_name} ({', '.join(other_chunkers.keys())}, {time_column});"
+        )
         with self.engine.connect() as conn:
             conn.execute(text(query_create_sensordata_table))
             conn.execute(text(query_create_sensordata_hypertable))

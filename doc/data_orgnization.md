@@ -27,11 +27,19 @@ The common information of all instruments are stored in the `instruments` table.
 The type-specific information are stored in tables named `instruments_<type>` where `<type>` is the type of the instrument (in lower case).
 Below table shows the columns in the type-specific tables (besides the symbol | exchange | currency column):
 
-| Enum[InstType]  | Columns      | Instrument Types which requires the column |
-|-----------------|--------------|--------------------------------------------|
-| STK             | sector       | Sector of the company                      |
-|                 | industry     | Industry of the company                    |
-|                 | country      | Country                                    |
-|                 | state        | State/Province                             |
-|                 | board_type   | Mainboard etc.                             |
-|                 | issue_price  | Stock issuing price                        |
+- Stock (STK)
+    
+    | Columns      | Data Type | Instrument Types which requires the column |
+    |--------------|-----------|--------------------------------------------|
+    | country      | str       | Country                                    |
+    | state        | str       | State/Province                             |                             
+    | board_type   | str       | Mainboard etc.                             |                            
+    | issue_price  | float     | Stock issuing price                        |                        
+
+- Future (FUT)
+- LOF & ETF
+   
+    | Columns      | Data Type | Instrument Types which requires the column |
+    |--------------|-----------|--------------------------------------------|
+    | country      | str       | Country                                    |
+-    
