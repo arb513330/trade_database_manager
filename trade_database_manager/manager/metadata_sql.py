@@ -224,19 +224,23 @@ class MetadataSql:
         filter_fields_common = {
             k: v for k, v in filter_fields.items() if k in ["ticker", "exchange"] + COMMON_METADATA_COLUMNS
         }
-        filter_fields_type = {
-            k: v for k, v in filter_fields.items() if k in ["ticker", "exchange"] + TYPE_METADATA_COLUMNS[inst_type]
-        }
-        filter_fields_cross = {
-            "instruments": filter_fields_common,
-            f"instruments_{inst_type.lower()}": filter_fields_type,
-        }
-        df = self._manager.read_data_across_tables(
-            ["instruments", f"instruments_{inst_type.lower()}"],
-            joined_columns=["ticker", "exchange"],
-            query_fields=query_fields_cross,
-            filter_fields=filter_fields_cross,
-        )
+        filter_fields_type = {k: v for k, v in filter_fields.items() if k in TYPE_METADATA_COLUMNS[inst_type]}
+
+        if query_fields != "*" and not bool(query_fields_type) and not bool(filter_fields_type):
+            df = self._manager.read_data(
+                "instruments", query_fields=query_fields_common, filter_fields=filter_fields_common
+            )
+        else:
+            filter_fields_cross = {
+                "instruments": filter_fields_common,
+                f"instruments_{inst_type.lower()}": filter_fields_type,
+            }
+            df = self._manager.read_data_across_tables(
+                ["instruments", f"instruments_{inst_type.lower()}"],
+                joined_columns=["ticker", "exchange"],
+                query_fields=query_fields_cross,
+                filter_fields=filter_fields_cross,
+            )
 
         if isinstance(df.columns, pd.Index):
             df = df.loc[:, ~df.columns.duplicated()]
