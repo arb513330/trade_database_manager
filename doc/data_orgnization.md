@@ -42,4 +42,6 @@ Below table shows the columns in the type-specific tables (besides the symbol | 
     | Columns      | Data Type | Instrument Types which requires the column |
     |--------------|-----------|--------------------------------------------|
     | country      | str       | Country                                    |
--    
+
+- Index (IDX)
+  There is no specifiec column for index.
