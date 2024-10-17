@@ -11,6 +11,8 @@ import pandas as pd
 
 from ..core.sql.sqlmanager import SqlManager
 from .typedefs import EXCHANGE_LITERALS, INST_TYPE_LITERALS, Opt_T_SeqT, T_DictT
+from .fields_data_type import FIELD_DATA_TYPE_SQL, String
+
 
 COMMON_METADATA_COLUMNS = [
     "name",
@@ -26,7 +28,9 @@ COMMON_METADATA_COLUMNS = [
     "delisted_date",
 ]
 TYPE_METADATA_COLUMNS = {
-    "STK": ["sector", "industry", "country", "state", "board_type", "issue_price"],
+    "STK": ["country", "state", "board_type", "issue_price"],
+    "ETF": ["issuer", "current_mgr", "custodian", "issuer_country", "fund_type", "benchmark"],
+    "LOF": ["issuer", "current_mgr", "custodian", "issuer_country", "fund_type", "benchmark"],
 }
 
 
@@ -45,6 +49,24 @@ class MetadataSql:
             cls._instance = super(MetadataSql, cls).__new__(cls)
             cls._manager = SqlManager()
         return cls._instance
+
+    def initialize(self, for_inst_types="all"):
+        if for_inst_types == "all":
+            for_inst_types = list(TYPE_METADATA_COLUMNS.keys())
+        elif isinstance(for_inst_types, str):
+            for_inst_types = [for_inst_types]
+        columns_base = [("ticker", String(10)), ("exchange", String(10))]
+        if not self._manager.table_exists("instruments"):
+            columns = columns_base + [(col, FIELD_DATA_TYPE_SQL.get(col, String())) for col in COMMON_METADATA_COLUMNS]
+            self._manager.create_table("instruments", columns, {"primary_key": ["ticker", "exchange"]})
+        for inst_type in for_inst_types:
+            if not self._manager.table_exists(f"instruments_{inst_type.lower()}"):
+                columns = columns_base + [
+                    (col, FIELD_DATA_TYPE_SQL.get(col, String())) for col in TYPE_METADATA_COLUMNS[inst_type]
+                ]
+                self._manager.create_table(
+                    f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
+                )
 
     def update_instrument_metadata(self, data: Union[pd.DataFrame, list[dict], dict]):
         """
@@ -70,10 +92,12 @@ class MetadataSql:
 
         self._manager.insert("instruments", data_common, upsert=True)
         if "inst_type" in data.columns:
-            for inst_type, columns in TYPE_METADATA_COLUMNS.items():
-                data_type_df = data.loc[data.inst_type == inst_type, data.columns.intersection(columns)]
-                if not data_type_df.empty:
-                    self._manager.insert(f"instruments_{inst_type.lower()}", data_type_df, upsert=True)
+            g = data.groupby("inst_type", group_keys=False)
+            for inst_type, data_type_df in g:
+                if not data_type_df.empty and inst_type in TYPE_METADATA_COLUMNS:
+                    columns = data_type_df.columns.intersection(TYPE_METADATA_COLUMNS[inst_type])
+                    if not columns.empty:
+                        self._manager.insert(f"instruments_{inst_type.lower()}", data_type_df[columns], upsert=True)
 
     def _convert_datetime_columns(self, data: pd.DataFrame):
         for col in ["listed_date", "delisted_date"]:
@@ -133,7 +157,11 @@ class MetadataSql:
         for inst_type, common_df_by_type in common_df.groupby("inst_type"):
             inst_type = cast(INST_TYPE_LITERALS, inst_type)
             if all_fields_common:
-                res[inst_type] = common_df_by_type.set_index(["ticker", "exchange"]) if len(common_df_by_type.columns) > 2 else common_df_by_type
+                res[inst_type] = (
+                    common_df_by_type.set_index(["ticker", "exchange"])
+                    if len(common_df_by_type.columns) > 2
+                    else common_df_by_type
+                )
                 continue
             query_fields_type = (
                 ["ticker", "exchange"] + [f for f in query_fields if f in TYPE_METADATA_COLUMNS[inst_type]]
@@ -196,19 +224,23 @@ class MetadataSql:
         filter_fields_common = {
             k: v for k, v in filter_fields.items() if k in ["ticker", "exchange"] + COMMON_METADATA_COLUMNS
         }
-        filter_fields_type = {
-            k: v for k, v in filter_fields.items() if k in ["ticker", "exchange"] + TYPE_METADATA_COLUMNS[inst_type]
-        }
-        filter_fields_cross = {
-            "instruments": filter_fields_common,
-            f"instruments_{inst_type.lower()}": filter_fields_type,
-        }
-        df = self._manager.read_data_across_tables(
-            ["instruments", f"instruments_{inst_type.lower()}"],
-            joined_columns=["ticker", "exchange"],
-            query_fields=query_fields_cross,
-            filter_fields=filter_fields_cross,
-        )
+        filter_fields_type = {k: v for k, v in filter_fields.items() if k in TYPE_METADATA_COLUMNS[inst_type]}
+
+        if query_fields != "*" and not bool(query_fields_type) and not bool(filter_fields_type):
+            df = self._manager.read_data(
+                "instruments", query_fields=query_fields_common, filter_fields=filter_fields_common
+            )
+        else:
+            filter_fields_cross = {
+                "instruments": filter_fields_common,
+                f"instruments_{inst_type.lower()}": filter_fields_type,
+            }
+            df = self._manager.read_data_across_tables(
+                ["instruments", f"instruments_{inst_type.lower()}"],
+                joined_columns=["ticker", "exchange"],
+                query_fields=query_fields_cross,
+                filter_fields=filter_fields_cross,
+            )
 
         if isinstance(df.columns, pd.Index):
             df = df.loc[:, ~df.columns.duplicated()]

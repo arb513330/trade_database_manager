@@ -3,3 +3,4 @@
 # @Author  : YQ Tsui
 # @File    : __init__.py
 # @Purpose :
+from .sqlmanager import SqlManager
