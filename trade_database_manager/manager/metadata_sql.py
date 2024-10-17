@@ -156,7 +156,7 @@ class MetadataSql:
         res = {}
         for inst_type, common_df_by_type in common_df.groupby("inst_type"):
             inst_type = cast(INST_TYPE_LITERALS, inst_type)
-            if all_fields_common:
+            if all_fields_common or inst_type not in TYPE_METADATA_COLUMNS:
                 res[inst_type] = (
                     common_df_by_type.set_index(["ticker", "exchange"])
                     if len(common_df_by_type.columns) > 2
@@ -215,7 +215,7 @@ class MetadataSql:
             query_fields_cross = "*"
         else:
             query_fields_common = ["ticker", "exchange"] + [f for f in query_fields if f in COMMON_METADATA_COLUMNS]
-            query_fields_type = [f for f in query_fields if f in TYPE_METADATA_COLUMNS[inst_type]]
+            query_fields_type = [f for f in query_fields if f in TYPE_METADATA_COLUMNS.get(inst_type, [])]
             query_fields_cross = {
                 "instruments": query_fields_common,
                 f"instruments_{inst_type.lower()}": query_fields_type,
@@ -224,9 +224,9 @@ class MetadataSql:
         filter_fields_common = {
             k: v for k, v in filter_fields.items() if k in ["ticker", "exchange"] + COMMON_METADATA_COLUMNS
         }
-        filter_fields_type = {k: v for k, v in filter_fields.items() if k in TYPE_METADATA_COLUMNS[inst_type]}
+        filter_fields_type = {k: v for k, v in filter_fields.items() if k in TYPE_METADATA_COLUMNS.get(inst_type, [])}
 
-        if query_fields != "*" and not bool(query_fields_type) and not bool(filter_fields_type):
+        if (query_fields != "*" or inst_type not in TYPE_METADATA_COLUMNS) and not bool(query_fields_type) and not bool(filter_fields_type):
             df = self._manager.read_data(
                 "instruments", query_fields=query_fields_common, filter_fields=filter_fields_common
             )
