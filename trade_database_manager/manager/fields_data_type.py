@@ -19,6 +19,7 @@ FIELD_DATA_TYPE_SQL = {
     "listed_date": Date(),
     "delisted_date": Date(),
     "country": String(6),
+    "state": String(36),
     # STK
     "sector": String(30),
     "industry": String(36),
@@ -30,4 +31,25 @@ FIELD_DATA_TYPE_SQL = {
     "issuer_country": String(6),
     "fund_type": String(20),
     "benchmark": String(60),
+    # Convertible Bond (CB)
+    "stock_ticker": String(20),
+    "stock_exchange": String(10),
+    "maturity_date": Date(),
+    "issue_price": DOUBLE_PRECISION(),
+    "total_issue_size": DOUBLE_PRECISION(),
+    "par_value": DOUBLE_PRECISION(),
+    "redeem_price": DOUBLE_PRECISION(),
+    "conversion_start_date": Date(),
+    "conversion_end_date": Date(),
+    "callback_terms": String(1024),
+    "callback_type": String(20),
+    "adjust_terms": String(1024),
+    "adjust_type": String(20),
+    "putback_terms": String(1024),
+    "putback_type": String(20),
+    "callback_level": DOUBLE_PRECISION(),
 }
+
+DATE_TIME_COLS = {"listed_date", "delisted_date", "maturity_date", "conversion_start_date", "conversion_end_date"}
+
+BASE_COLUMNS = [("ticker", String(10)), ("exchange", String(10))]

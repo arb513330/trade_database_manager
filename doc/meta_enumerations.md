@@ -61,6 +61,7 @@
 | FUT            | Future Contract      |
 | OPT            | Option Contract      |
 | FUND           | Mutual Fund          |
+| CB             | Convertable Bond     |
 
 
 ### Status

@@ -53,3 +53,23 @@ then the system will send an email with the license file and a base64 key (Eithe
    - `-T 1000`: This sets the timeout in seconds for client queries. In this case, it's set to 1000 seconds.
 
    - `-U /opt/l64/trade.q`: This sets the access control list file. In this case, the file is located at `/opt/l64/trade.q`. This file contains a list of usernames and passwords for clients that are allowed to connect to the kdb+ process.
+
+### MetaData Initialization
+
+Allowed instruments types are given in "Instrument Types" section of [meta_enumerations.md](doc/meta_enumerations.md).
+
+### Data Initialization for Instrument Type(s)
+```python
+from trade_database_manager.manager import MetadataSql
+
+metadatalib = MetadataSql()
+metadatalib.initialize(for_inst_types="CB")
+```
+
+This will try to create two tables, `instruments` and `instruments_cb` in the database if not yet exists. The `instruments` table will store the common information of all instruments, and the `instruments_cb` table will store the type-specific information of the instruments of type `CB`.
+
+The table fields are listed in the [data_organization.md](doc/data_organization.md) file.
+
+
+
+
