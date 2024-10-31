@@ -6,7 +6,7 @@
 
 from typing import Dict, Literal, Optional, Sequence, TypeVar, Union
 
-INST_TYPE_LITERALS = Literal["STK", "FUT", "OPT", "IDX", "ETF", "FND", "BND", "CASH", "CRYPTO"]
+INST_TYPE_LITERALS = Literal["STK", "FUT", "OPT", "IDX", "ETF", "LOF", "FUND", "BOND", "CASH", "CRYPTO", "CB"]
 EXCHANGE_LITERALS = Literal[
     "SSE",
     "SZSE",

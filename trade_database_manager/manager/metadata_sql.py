@@ -11,7 +11,7 @@ import pandas as pd
 
 from ..core.sql.sqlmanager import SqlManager
 from .typedefs import EXCHANGE_LITERALS, INST_TYPE_LITERALS, Opt_T_SeqT, T_DictT
-from .fields_data_type import FIELD_DATA_TYPE_SQL, String
+from .fields_data_type import FIELD_DATA_TYPE_SQL, DATE_TIME_COLS, BASE_COLUMNS
 
 
 COMMON_METADATA_COLUMNS = [
@@ -31,6 +31,25 @@ TYPE_METADATA_COLUMNS = {
     "STK": ["country", "state", "board_type", "issue_price"],
     "ETF": ["issuer", "current_mgr", "custodian", "issuer_country", "fund_type", "benchmark"],
     "LOF": ["issuer", "current_mgr", "custodian", "issuer_country", "fund_type", "benchmark"],
+    "CB": [
+        "country",
+        "state",
+        "stock_ticker",
+        "stock_exchange",
+        "maturity_date",
+        "issue_price",
+        "total_issue_size",
+        "par_value",
+        "redeem_price",
+        "conversion_start_date",
+        "conversion_end_date",
+        "callback_terms",
+        "callback_type",
+        "adjust_terms",
+        "adjust_type",
+        "putback_terms",
+        "putback_type",
+    ],
 }
 
 
@@ -55,15 +74,12 @@ class MetadataSql:
             for_inst_types = list(TYPE_METADATA_COLUMNS.keys())
         elif isinstance(for_inst_types, str):
             for_inst_types = [for_inst_types]
-        columns_base = [("ticker", String(10)), ("exchange", String(10))]
         if not self._manager.table_exists("instruments"):
-            columns = columns_base + [(col, FIELD_DATA_TYPE_SQL.get(col, String())) for col in COMMON_METADATA_COLUMNS]
+            columns = BASE_COLUMNS + [(col, FIELD_DATA_TYPE_SQL[col]) for col in COMMON_METADATA_COLUMNS]
             self._manager.create_table("instruments", columns, {"primary_key": ["ticker", "exchange"]})
         for inst_type in for_inst_types:
             if not self._manager.table_exists(f"instruments_{inst_type.lower()}"):
-                columns = columns_base + [
-                    (col, FIELD_DATA_TYPE_SQL.get(col, String())) for col in TYPE_METADATA_COLUMNS[inst_type]
-                ]
+                columns = BASE_COLUMNS + [(col, FIELD_DATA_TYPE_SQL[col]) for col in TYPE_METADATA_COLUMNS[inst_type]]
                 self._manager.create_table(
                     f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
                 )
@@ -99,8 +115,9 @@ class MetadataSql:
                     if not columns.empty:
                         self._manager.insert(f"instruments_{inst_type.lower()}", data_type_df[columns], upsert=True)
 
-    def _convert_datetime_columns(self, data: pd.DataFrame):
-        for col in ["listed_date", "delisted_date"]:
+    @staticmethod
+    def _convert_datetime_columns(data: pd.DataFrame):
+        for col in DATE_TIME_COLS:
             if col in data.columns:
                 data[col] = data[col].apply(pd.to_datetime)
 
@@ -213,6 +230,8 @@ class MetadataSql:
 
         if query_fields == "*":
             query_fields_cross = "*"
+            query_fields_type = []
+            query_fields_common = query_fields
         else:
             query_fields_common = ["ticker", "exchange"] + [f for f in query_fields if f in COMMON_METADATA_COLUMNS]
             query_fields_type = [f for f in query_fields if f in TYPE_METADATA_COLUMNS.get(inst_type, [])]
@@ -226,7 +245,11 @@ class MetadataSql:
         }
         filter_fields_type = {k: v for k, v in filter_fields.items() if k in TYPE_METADATA_COLUMNS.get(inst_type, [])}
 
-        if (query_fields != "*" or inst_type not in TYPE_METADATA_COLUMNS) and not bool(query_fields_type) and not bool(filter_fields_type):
+        if (
+            (query_fields != "*" or inst_type not in TYPE_METADATA_COLUMNS)
+            and not bool(query_fields_type)
+            and not bool(filter_fields_type)
+        ):
             df = self._manager.read_data(
                 "instruments", query_fields=query_fields_common, filter_fields=filter_fields_common
             )

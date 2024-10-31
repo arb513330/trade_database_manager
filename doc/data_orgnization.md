@@ -45,3 +45,25 @@ Below table shows the columns in the type-specific tables (besides the symbol | 
 
 - Index (IDX)
   There is no specifiec column for index.
+
+- Convertable Bond (CB)
+    
+    | Columns               | Data Type | Instrument Types which requires the column        |
+    |-----------------------|-----------|---------------------------------------------------|
+    | country               | str       | Country                                           |
+    | state                 | str       | State/Province                                    |
+    | stock_code            | float     | Underlying stock code                             |     
+    | stock_exchange        | float     | Underlying stock exchange                         |
+    | maturity_date         | datetime  | Bond maturity date                                |
+    | issue_price           | float     | Bond issuing price                                |
+    | total_issue_size      | float     | Total issue size                                  |
+    | par_value             | float     | Bond par value                                    |
+    | redemption_price      | float     | Price that issue pays back at expiry / redemption |
+    | conversion_start_date | datetime  | Period start date for convertion                  |
+    | conversion_end_date   | datetime  | Period end date for convertion                    |
+    | callback_terms        | str       | Terms for callback, i.e., issuer call back        |
+    | callback_type         | str       | Type of callback method                           |
+    | putback_terms         | str       | Terms for investor to sell back bonds to issuer   |
+    | putback_type          | str       | Type of callback method                           |
+    | adjust_terms          | str       | Terms of adjust convertion price                  |
+    | adjust_type           | str       | Type of callback method                           |
