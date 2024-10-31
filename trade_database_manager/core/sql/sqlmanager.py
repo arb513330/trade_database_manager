@@ -14,6 +14,7 @@ from sqlalchemy import Index, MetaData, Table, Column, create_engine, inspect, s
 from sqlalchemy.types import TypeEngine
 from sqlalchemy.dialects.postgresql import insert
 
+from .utils import infer_sql_type
 from ...config import CONFIG
 from ..typedefs import FILTERFIELD_TYPE, QUERYFIELD_TYPE
 
@@ -134,7 +135,7 @@ class SqlManager:
     def create_table(
         self,
         table_name: str,
-        table_columns: list[tuple[str, TypeEngine]],
+        table_columns: list[tuple[str, TypeEngine|type|tuple[type, tuple]]],
         unique_index_columns: Sequence[str] = (),
         primary_key: Union[str, set[str]] = set(),
     ):
@@ -153,7 +154,9 @@ class SqlManager:
         table_meta = MetaData()
         if isinstance(primary_key, str):
             primary_key = {primary_key}
-        columns = [Column(name, col_type, primary_key=name in primary_key) for name, col_type in table_columns]
+        columns = [
+            Column(name, infer_sql_type(col_type), primary_key=name in primary_key) for name, col_type in table_columns
+        ]
         table = Table(table_name, table_meta, *columns)
         table.create(self.engine)
         for column in unique_index_columns:
