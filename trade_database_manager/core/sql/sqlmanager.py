@@ -200,7 +200,7 @@ class SqlManager:
         """
         # check if any index is referring to the column
         sql_code = f"SELECT indexname, indexdef FROM pg_indexes WHERE indexdef LIKE '%%(%%{old_column_name}%%)%%' and tablename = '{table_name}'"
-        index_refering_column = dict(self.engine.execute(sql_code).fetchall())
+        index_refering_column = dict(self._execute(sql_code).fetchall())
 
         # drop indexes referring to the column
         for index_name in index_refering_column:
