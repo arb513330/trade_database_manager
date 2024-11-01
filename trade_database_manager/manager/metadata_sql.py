@@ -40,7 +40,7 @@ TYPE_METADATA_COLUMNS = {
         "issue_price",
         "total_issue_size",
         "par_value",
-        "redeem_price",
+        "redemption_price",
         "conversion_start_date",
         "conversion_end_date",
         "callback_terms",

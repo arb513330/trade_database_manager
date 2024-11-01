@@ -17,16 +17,16 @@ def infer_sql_type(input_type):
         input_type, *args = input_type
     else:
         args = ()
-    if isinstance(input_type, str):
+    if issubclass(input_type, str):
         return String(*args)
-    if isinstance(input_type, (int, np.signedinteger)):
+    if issubclass(input_type, (int, np.signedinteger)):
         return Integer()
-    if isinstance(input_type, (np.floating, float)):
+    if issubclass(input_type, (np.floating, float)):
         return DOUBLE_PRECISION()
-    if isinstance(input_type, (bool, np.bool_)):
+    if issubclass(input_type, (bool, np.bool_)):
         return Integer()
-    if isinstance(input_type, (numpy.datetime64, pd.Timestamp, datetime)):
-        return Date() if args and args[0] == True else DateTime()
-    if isinstance(input_type, date):
+    if issubclass(input_type, (np.datetime64, pd.Timestamp, datetime)):
+        return Date() if args and args[0] else DateTime()
+    if issubclass(input_type, date):
         return Date()
     raise ValueError(f"Unsupported type {input_type}")
