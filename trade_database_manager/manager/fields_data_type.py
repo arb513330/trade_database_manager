@@ -4,7 +4,7 @@
 # @File    : fields_data_type.py
 # @Purpose :
 
-from sqlalchemy import DOUBLE_PRECISION, Integer, String, Date
+from sqlalchemy import DOUBLE_PRECISION, Integer, String, Date, Text
 
 FIELD_DATA_TYPE_SQL = {
     "ticker": String(20),
@@ -41,11 +41,11 @@ FIELD_DATA_TYPE_SQL = {
     "redeem_price": DOUBLE_PRECISION(),
     "conversion_start_date": Date(),
     "conversion_end_date": Date(),
-    "callback_terms": String(1024),
+    "callback_terms": Text(),
     "callback_type": String(20),
-    "adjust_terms": String(1024),
+    "adjust_terms": Text(),
     "adjust_type": String(20),
-    "putback_terms": String(1024),
+    "putback_terms": Text(),
     "putback_type": String(20),
     "callback_level": DOUBLE_PRECISION(),
 }

@@ -4,7 +4,7 @@
 # @File    : utils.py
 # @Purpose : utility functions for sqlmanager
 
-from sqlalchemy.types import TypeEngine, DOUBLE_PRECISION, Integer, String, Date, DateTime
+from sqlalchemy.types import TypeEngine, DOUBLE_PRECISION, Integer, String, Date, DateTime, Text
 import numpy as np
 import pandas as pd
 from datetime import datetime, date
@@ -18,7 +18,9 @@ def infer_sql_type(input_type):
     else:
         args = ()
     if issubclass(input_type, str):
-        return String(*args)
+        if args:
+            return String(*args)
+        return Text()
     if issubclass(input_type, (int, np.signedinteger)):
         return Integer()
     if issubclass(input_type, (np.floating, float)):

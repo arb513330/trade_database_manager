@@ -10,7 +10,7 @@ from functools import partial, reduce
 from typing import Any, Literal, Sequence, Union, Callable
 
 import pandas as pd
-from sqlalchemy import Index, MetaData, Table, Column, create_engine, inspect, select, text, func, and_, Executable
+from sqlalchemy import Index, MetaData, Table, Column, create_engine, inspect, select, text, func, and_, Executable, PrimaryKeyConstraint
 from sqlalchemy.types import TypeEngine
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import sessionmaker, aliased
@@ -141,7 +141,7 @@ class SqlManager:
         table_name: str,
         table_columns: list[tuple[str, TypeEngine | type | tuple[type, tuple]]],
         unique_index_columns: Sequence[str] = (),
-        primary_key: Union[str, set[str]] = set(),
+        primary_key: str|set[str] = set(),
     ):
         """
         Creates a table.
@@ -153,14 +153,16 @@ class SqlManager:
         :param unique_index_columns: Columns to enforce unique values on. Defaults to an empty sequence.
         :type unique_index_columns: Sequence[str]
         :param primary_key: The primary key(s) of the table. Defaults to an empty set.
-        :type primary_key: Union[str,set[str]]
+        :type primary_key: Union[str, set[str|tuple[str]]]
+
         """
         table_meta = MetaData()
-        if isinstance(primary_key, str):
-            primary_key = {primary_key}
-        columns = [
-            Column(name, infer_sql_type(col_type), primary_key=name in primary_key) for name, col_type in table_columns
-        ]
+        columns = [Column(name, infer_sql_type(col_type)) for name, col_type in table_columns]
+        if isinstance(primary_key, str) and primary_key != "":
+            columns.append(PrimaryKeyConstraint(primary_key))
+        elif primary_key:
+            columns.append(PrimaryKeyConstraint(*primary_key, name=f"pk_{table_name}"))
+
         table = Table(table_name, table_meta, *columns)
         table.create(self.engine)
         for column in unique_index_columns:
