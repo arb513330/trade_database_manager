@@ -7,12 +7,13 @@
 import re
 from collections.abc import Container
 from functools import partial, reduce
-from typing import Any, Literal, Sequence, Union
+from typing import Any, Literal, Sequence, Union, Callable
 
 import pandas as pd
-from sqlalchemy import Index, MetaData, Table, Column, create_engine, inspect, select, sql, text
+from sqlalchemy import Index, MetaData, Table, Column, create_engine, inspect, select, text, func, and_, Executable
 from sqlalchemy.types import TypeEngine
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import sessionmaker, aliased
 
 from .utils import infer_sql_type
 from ...config import CONFIG
@@ -39,10 +40,13 @@ class SqlManager:
     This class is used to manage SQL operations.
 
     :ivar sqlalchemy.engine.Engine engine: An instance of the SQLAlchemy Engine class for executing SQL operations.
+    :ivar sqlalchemy.orm.Session _session: An instance of the SQLAlchemy Session class for executing SQL operations.
+    :ivar sqlalchemy.engine.reflection.Inspector _inspector: An instance of the SQLAlchemy Inspector class for inspecting the database.
     """
 
     def __init__(self):
         self.engine = create_engine(CONFIG["sqlconnstr"])
+        self._session = sessionmaker(bind=self.engine)()  # TODO: is it better to be a class attribute?
         self._inspector = None
 
     @property
@@ -51,7 +55,7 @@ class SqlManager:
             self._inspector = inspect(self.engine)
         return self._inspector
 
-    def _execute(self, sql_executable: Union[str, sql.base.Executable]) -> Any:
+    def _execute(self, sql_executable: Union[str, Executable]) -> Any:
         if isinstance(sql_executable, str):
             sql_executable = text(sql_executable)
         with self.engine.begin() as conn:
@@ -135,7 +139,7 @@ class SqlManager:
     def create_table(
         self,
         table_name: str,
-        table_columns: list[tuple[str, TypeEngine|type|tuple[type, tuple]]],
+        table_columns: list[tuple[str, TypeEngine | type | tuple[type, tuple]]],
         unique_index_columns: Sequence[str] = (),
         primary_key: Union[str, set[str]] = set(),
     ):
@@ -250,7 +254,7 @@ class SqlManager:
                     for field, filter_values in filter_fields.items()
                 ]
             )
-        stmt = stmt.where(sql.and_(*conditions))
+        stmt = stmt.where(and_(*conditions))
         res = self._execute(stmt)
         return pd.DataFrame(res.fetchall(), columns=res.keys())
 
@@ -287,7 +291,7 @@ class SqlManager:
                 )
                 for field, filter_values in filter_fields.items()
             ]
-            stmt = stmt.where(sql.and_(*conditions))
+            stmt = stmt.where(and_(*conditions))
 
         # cannot use pandas.read_sql here as it discards timezone info
         res = self._execute(stmt)
@@ -318,7 +322,7 @@ class SqlManager:
         tables = {table_name: Table(table_name, meta, autoload_with=self.engine) for table_name in table_names}
 
         joined_table = reduce(
-            lambda x, y: x.join(y, sql.and_(*[x.columns[col] == y.columns[col] for col in joined_columns])),
+            lambda x, y: x.join(y, and_(*[x.columns[col] == y.columns[col] for col in joined_columns])),
             tables.values(),
         )
 
@@ -345,55 +349,97 @@ class SqlManager:
                         else table.columns[field] == filter_values
                     )
 
-            stmt = stmt.where(sql.and_(*conditions))
+            stmt = stmt.where(and_(*conditions))
 
         # cannot use pandas.read_sql here as it discards timezone info
         res = self._execute(stmt)
         return pd.DataFrame(res.fetchall(), columns=res.keys())
 
-    def create_ts_table(
+    def _read_extremum_in_group(
         self,
         table_name: str,
-        time_column: str,
-        table_columns: dict[str, str],
-        time_chunk_interval: str = "1 year",
-        other_chunkers: dict[str, int] = None,
+        target_column: str | list[str],
+        group_column: str | list[str],
+        extremum_column: str,
+        method: str | Callable,
+        filter_fields=None,
     ):
-        """
-        Creates a table with a timestamp column.
+        if isinstance(target_column, str):
+            target_column = [target_column]
+        if isinstance(group_column, str):
+            group_column = [group_column]
+        target_column_c = [Column(col) for col in target_column]
+        group_column_c = [Column(col) for col in group_column]
+        extremum_column_c = Column(extremum_column)
 
-        :param table_name: The name of the table to create.
-        :type table_name: str
-        :param time_column: The name of the timestamp column.
-        :type time_column: str
-        :param table_columns: The names of the columns to create with their data types. The keys are the column names and the values are the data types in PostgreSQL.
-        :type table_columns: Dict[str, str]
-        :param time_chunk_interval: The interval to chunk the time column by. Defaults to "1 year".
-        :type time_chunk_interval: str
-        :param other_chunkers: Other columns to chunk by. The keys are the column names and the values are the num of hashes. Defaults to None.
-        :type other_chunkers: Dict[str, int], optional
-        """
-        query_create_sensordata_table = f"""
-        CREATE TABLE {table_name} (
-        {time_column} TIMESTAMP NOT NULL,
-        {", ".join([f"{column_name} {column_type}{' NOT NULL' if column_name in other_chunkers else ''}" for column_name, column_type in table_columns.items()])}
-        );
-        """
-        query_create_sensordata_hypertable = (
-            f"SELECT create_hypertable('{table_name}', by_range('{time_column}', INTERVAL '{time_chunk_interval}'));"
+        table_meta = MetaData()
+
+        full_table = (
+            Table(table_name, table_meta, *target_column_c, *group_column_c)
+            if extremum_column in target_column
+            else Table(table_name, table_meta, *target_column_c, *group_column_c, extremum_column_c)
         )
-        if other_chunkers is not None:
-            for column_name, num_hash in other_chunkers.items():
-                query_create_sensordata_hypertable += (
-                    f"\nSELECT add_dimension('{table_name}', by_hash('{column_name}', {num_hash}));"
+
+        if isinstance(method, str):
+            method = getattr(func, method)
+
+        if filter_fields:
+            conditions = [
+                (
+                    full_table.columns[field].in_(filter_values)
+                    if isinstance(filter_values, Container) and not isinstance(filter_values, (str, bytes))
+                    else full_table.columns[field] == filter_values
                 )
+                for field, filter_values in filter_fields.items()
+            ]
+            subquery = (
+                self._session.query(*group_column_c, method(extremum_column_c).label("ColExtremum"))
+                .where(and_(*conditions))
+                .group_by(*group_column_c)
+                .subquery()
+            )
+        else:
+            subquery = (
+                self._session.query(*group_column_c, method(extremum_column_c).label("ColExtremum"))
+                .group_by(*group_column_c)
+                .subquery()
+            )
 
-        uidx_name = f"uix_{table_name}_{'_'.join(other_chunkers.keys())}_{time_column}"
-        query_unique_index = (
-            f"CREATE UNIQUE INDEX {uidx_name} ON {table_name} ({', '.join(other_chunkers.keys())}, {time_column});"
+        t_full = aliased(full_table)
+        t_sub = aliased(subquery)
+
+        cols_res = [getattr(t_full.c, col) for col in group_column + target_column]
+
+        query = self._session.query(*cols_res).join(
+            t_sub,
+            and_(
+                getattr(t_full.c, extremum_column) == t_sub.c.ColExtremum,
+                *[getattr(t_full.c, col) == getattr(t_sub.c, col) for col in group_column],
+            ),
         )
-        with self.engine.connect() as conn:
-            conn.execute(text(query_create_sensordata_table))
-            conn.execute(text(query_create_sensordata_hypertable))
-            conn.execute(text(query_unique_index))
-            conn.commit()
+
+        return pd.DataFrame(query.all(), columns=group_column + target_column)
+
+    def read_max_in_group(
+        self,
+        table_name: str,
+        target_column: str | list[str],
+        group_column: str | list[str],
+        extremum_column: str,
+        filter_fields=None,
+    ):
+        return self._read_extremum_in_group(
+            table_name, target_column, group_column, extremum_column, "max", filter_fields
+        )
+
+    def read_min_in_group(
+        self,
+        table_name: str,
+        target_column: str | list[str],
+        group_column: str | list[str],
+        extremum_column: str,
+        filter_fields=None,
+    ):
+        return self._read_extremum_in_group(
+            table_name, target_column, group_column, extremum_column, "min", filter_fields
+        )
