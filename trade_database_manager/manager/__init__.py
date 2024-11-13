@@ -5,5 +5,6 @@
 # @Purpose :
 
 from .metadata_sql import MetadataSql
+from .metadata_sql_cb import CBMetadataSql
 
-__all__ = ("MetadataSql",)
+__all__ = ("MetadataSql", "CBMetadataSql")

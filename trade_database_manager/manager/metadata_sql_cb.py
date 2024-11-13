@@ -30,6 +30,10 @@ class CBMetadataSql(MetadataSql):
         :param latest_by: The field to use for latest by.
         :type latest_by: str
         """
+        if isinstance(fields, str):
+            fields = [fields]
+        elif isinstance(fields, tuple):
+            fields = list(fields)
         if tickers is None and exchanges is None:
             filter_fields = None
         else:
