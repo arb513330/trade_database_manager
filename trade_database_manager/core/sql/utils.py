@@ -4,10 +4,11 @@
 # @File    : utils.py
 # @Purpose : utility functions for sqlmanager
 
-from sqlalchemy.types import TypeEngine, DOUBLE_PRECISION, Integer, String, Date, DateTime, Text
+from datetime import date, datetime
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, date
+from sqlalchemy.types import DOUBLE_PRECISION, Date, DateTime, Integer, String, Text, TypeEngine
 
 
 def infer_sql_type(input_type):

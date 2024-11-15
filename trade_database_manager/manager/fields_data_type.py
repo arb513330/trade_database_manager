@@ -4,7 +4,7 @@
 # @File    : fields_data_type.py
 # @Purpose :
 
-from sqlalchemy import DOUBLE_PRECISION, Integer, String, Date, Text
+from sqlalchemy import DOUBLE_PRECISION, Date, Integer, String, Text
 
 FIELD_DATA_TYPE_SQL = {
     "ticker": String(20),

@@ -7,17 +7,30 @@
 import re
 from collections.abc import Container
 from functools import partial, reduce
-from typing import Any, Literal, Sequence, Union, Callable
+from typing import Any, Callable, Literal, Sequence, Union
 
 import pandas as pd
-from sqlalchemy import Index, MetaData, Table, Column, create_engine, inspect, select, text, func, and_, Executable, PrimaryKeyConstraint
-from sqlalchemy.types import TypeEngine
+from sqlalchemy import (
+    Column,
+    Executable,
+    Index,
+    MetaData,
+    PrimaryKeyConstraint,
+    Table,
+    and_,
+    create_engine,
+    func,
+    inspect,
+    select,
+    text,
+)
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import sessionmaker, aliased
+from sqlalchemy.orm import aliased, sessionmaker
+from sqlalchemy.types import TypeEngine
 
-from .utils import infer_sql_type
 from ...config import CONFIG
 from ..typedefs import FILTERFIELD_TYPE, QUERYFIELD_TYPE
+from .utils import infer_sql_type
 
 
 def _insert_on_conflict_update(table, conn, keys, data_iter, indexes):
@@ -141,7 +154,7 @@ class SqlManager:
         table_name: str,
         table_columns: list[tuple[str, TypeEngine | type | tuple[type, tuple]]],
         unique_index_columns: Sequence[str] = (),
-        primary_key: str|set[str] = set(),
+        primary_key: str | set[str] = set(),
     ):
         """
         Creates a table.
