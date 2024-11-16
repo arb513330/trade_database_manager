@@ -10,9 +10,8 @@ from typing import Union, cast
 import pandas as pd
 
 from ..core.sql.sqlmanager import SqlManager
+from .fields_data_type import BASE_COLUMNS, DATE_TIME_COLS, FIELD_DATA_TYPE_SQL
 from .typedefs import EXCHANGE_LITERALS, INST_TYPE_LITERALS, Opt_T_SeqT, T_DictT
-from .fields_data_type import FIELD_DATA_TYPE_SQL, DATE_TIME_COLS, BASE_COLUMNS
-
 
 COMMON_METADATA_COLUMNS = [
     "name",
@@ -40,7 +39,7 @@ TYPE_METADATA_COLUMNS = {
         "issue_price",
         "total_issue_size",
         "par_value",
-        "redeem_price",
+        "redemption_price",
         "conversion_start_date",
         "conversion_end_date",
         "callback_terms",
