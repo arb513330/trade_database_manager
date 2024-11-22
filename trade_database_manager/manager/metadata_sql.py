@@ -267,7 +267,7 @@ class MetadataSql:
             df = self._manager.read_data(
                 f"instruments_{inst_type.lower()}", query_fields=query_fields, filter_fields=filter_fields
             )
-        if (
+        elif (
             (query_fields != "*" or inst_type not in TYPE_METADATA_COLUMNS)
             and not bool(query_fields_type)
             and not bool(filter_fields_type)
