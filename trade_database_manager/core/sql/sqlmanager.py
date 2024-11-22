@@ -170,7 +170,7 @@ class SqlManager:
 
         """
         table_meta = MetaData()
-        columns = [Column(name, infer_sql_type(col_type)) for name, col_type in table_columns]
+        columns: list[Column|PrimaryKeyConstraint] = [Column(name, infer_sql_type(col_type)) for name, col_type in table_columns]
         if isinstance(primary_key, str) and primary_key != "":
             columns.append(PrimaryKeyConstraint(primary_key))
         elif primary_key:

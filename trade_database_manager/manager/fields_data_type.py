@@ -4,11 +4,13 @@
 # @File    : fields_data_type.py
 # @Purpose :
 
-from sqlalchemy import DOUBLE_PRECISION, Date, Integer, String, Text
+from sqlalchemy import DOUBLE_PRECISION, Date, Integer, String, Text, DateTime
 
 FIELD_DATA_TYPE_SQL = {
     "ticker": String(20),
-    "name": String(20),
+    "name": String(128),
+    "trading_code": String(20),
+    "inst_type": String(20),
     "currency": String(6),
     "exchange": String(10),
     "timezone": String(30),
@@ -48,8 +50,18 @@ FIELD_DATA_TYPE_SQL = {
     "putback_terms": Text(),
     "putback_type": String(20),
     "callback_level": DOUBLE_PRECISION(),
+    # Futures (FUT)
+    "contract_unit": String(20),
+    "contract_multiplier": DOUBLE_PRECISION(),
+    "expiry_time": DateTime(),
+    "delivery_date": Date(),
+    "settlement_method": String(20),
+    "underlying_code": String(20),
+    "underlying_exchange": String(10),
+    "underlying_type": String(20),
+    "margin_method": String(20),
 }
 
-DATE_TIME_COLS = {"listed_date", "delisted_date", "maturity_date", "conversion_start_date", "conversion_end_date"}
+DATE_TIME_COLS = {"listed_date", "delisted_date", "maturity_date", "conversion_start_date", "conversion_end_date", "expiry_date", "delivery_date"}
 
-BASE_COLUMNS = [("ticker", String(10)), ("exchange", String(10))]
+BASE_COLUMNS = [("ticker", String(36)), ("exchange", String(10))]

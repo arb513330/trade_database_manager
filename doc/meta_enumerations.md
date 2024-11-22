@@ -71,3 +71,10 @@
 | Active         | Normal, actively traded |
 | Delisted       | Delisted from exchange  |
 | Suspended      | Suspended from trading  |
+
+### Settlement Method
+
+| Enum[SettleMethod] | Description |
+|--------------------|-------------|
+| Cash               | Cash        |
+| Physical           | Physical    |
