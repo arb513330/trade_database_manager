@@ -6,6 +6,6 @@
 
 from .metadata_sql import MetadataSql
 from .metadata_sql_cb import CBMetadataSql
-from .metadata_fut import FutMetadataSql
+from .metadata_sql_fut import FutMetadataSql
 
 __all__ = ("MetadataSql", "CBMetadataSql", "FutMetadataSql")
