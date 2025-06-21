@@ -50,6 +50,20 @@ TYPE_METADATA_COLUMNS = {
         "putback_type",
     ],
     "FUT": ["contract_unit", "contract_multiplier", "expiry_time", "delivery_date", "settlement_method", "underlying_code", "underlying_exchange", "underlying_type", "margin_method", "sector"],
+    "OPT": [
+        "strike",
+        "option_type",
+        "exercise_style",
+        "contract_unit",
+        "contract_multiplier",
+        "expiry_time",
+        "delivery_date",
+        "settlement_method",
+        "underlying_code",
+        "underlying_exchange",
+        "underlying_type",
+        "margin_method",
+    ],
 }
 
 

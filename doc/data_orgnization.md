@@ -8,7 +8,7 @@ The common information of all instruments are stored in the `instruments` table.
 
 | Column Name   | Data Type      | Description                        |
 |---------------|----------------|------------------------------------|
-| ticker        | str            | Trade Symbol at exchange           |
+| ticker        | str            | Symbol                             |
 | exchange      | Enum[Exchange] | Primary exchange / Trade route etc |
 | trading_code  | str            | Trading code at exchange           |
 | name          | str            | Instrument name                    |
@@ -81,3 +81,20 @@ Below table shows the columns in the type-specific tables (besides the symbol | 
     | putback_type          | str       | Type of callback method                           |
     | adjust_terms          | str       | Terms of adjust convertion price                  |
     | adjust_type           | str       | Type of callback method                           |
+
+- Options
+ 
+    | Columns             | Data Type          | Description                               |
+    |---------------------|--------------------|-------------------------------------------| 
+    | strike              | float              | Option strike                             | 
+    | option_type         | Enum[OptionType]   | Option type                               | 
+    | exercise_style      | Enum[ExerciseType] | Exercise style                            | 
+    | contract_unit       | str                | Contract unit                             | 
+    | contract_multipler  | float              | Multiplier per lot                        | 
+    | expiry_time         | datetime           | Contract expirations                      |
+    | delivery_date       | date               | Delivery date                             | 
+    | settlement_method   | Enum[SettleMethod] | Settlement method                         | 
+    | underlying_code     | str                | Underlying for contract                   |
+    | underlying_exchange | str                | Underlying trading exchange (if tradable) |
+    | underlying_type     | Enum[InstType]     | Underlying type, stock, commodity, etc.   |
+    | margin_method       | str                | method to calculate margin                |

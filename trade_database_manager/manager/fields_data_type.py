@@ -4,7 +4,7 @@
 # @File    : fields_data_type.py
 # @Purpose :
 
-from sqlalchemy import DOUBLE_PRECISION, Date, Integer, String, Text, DateTime
+from sqlalchemy import DOUBLE_PRECISION, Date, Integer, String, Text, DateTime, CHAR
 
 FIELD_DATA_TYPE_SQL = {
     "ticker": String(20),
@@ -60,6 +60,10 @@ FIELD_DATA_TYPE_SQL = {
     "underlying_exchange": String(10),
     "underlying_type": String(20),
     "margin_method": String(20),
+    # Options (OPT), mainly similar to Futures
+    "option_type": String(20),  # 'C' for Call, 'P' for Put
+    "strike": DOUBLE_PRECISION(),
+    "exercise_style": String(20),  # 'A' for American, 'E' for European
 }
 
 DATE_TIME_COLS = {"listed_date", "delisted_date", "maturity_date", "conversion_start_date", "conversion_end_date", "expiry_date", "delivery_date"}

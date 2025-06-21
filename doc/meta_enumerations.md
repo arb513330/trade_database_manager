@@ -78,3 +78,18 @@
 |--------------------|-------------|
 | Cash               | Cash        |
 | Physical           | Physical    |
+
+
+### Option Type
+
+| Enum[OptionType] | Description |
+|------------------|-------------|
+| C                | Call        |
+| P                | Put         |
+
+### Option Type
+
+| Enum[ExerciseType] | Description |
+|--------------------|-------------|
+| A                  | American    |
+| E                  | European    |

@@ -102,6 +102,7 @@ class CBMetadataSql(MetadataSql):
         """
         Updates the auxiliary data in the database.
 
+        :param auxiliary_type: ["RangerBinary"]
         :param data: The data to update.
         :type data: pd.DataFrame
         """
