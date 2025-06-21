@@ -17,6 +17,32 @@ class FutMetadataSql(MetadataSql):
         """
         return self._manager.read_data("instruments_fut", ["underlying_code"], unique=True)
 
+    def read_daily_auxiliary_data(self, fields: T_SeqT[str], underlyings: T_SeqT[str] = None) -> pd.DataFrame:
+        """
+        Read daily auxiliary data
+
+        Parameters
+        ----------
+        fields : T_SeqT[str]
+            The fields to read, can be a single field or a list of fields.
+        underlyings : T_SeqT[str], optional
+            The underlying codes to filter by, if None, all underlyings are included.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame containing the daily auxiliary data, indexed by underlying_code, exchange, and date.
+        """
+        if isinstance(fields, str):
+            fields = [fields]
+        elif isinstance(fields, tuple):
+            fields = list(fields)
+
+        fields = list(set(fields) | {"date", "underlying_code", "exchange"})
+
+        df = self._manager.read_data("fut_daily_auxiliary_data", fields, filter_fields={"underlying_code": underlyings} if underlyings is not None else None)
+        return df.set_index(["underlying_code", "exchange", "date"])
+
     def read_latest_daily_auxiliary_data(self, fields: T_SeqT[str] = "date",
         tickers: Opt_T_SeqT[str] = None,
         exchanges: Opt_T_SeqT[EXCHANGE_LITERALS] = None,
