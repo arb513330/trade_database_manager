@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2024/4/15 20:28
 # @Author  : YQ Tsui
 # @File    : sqlmanager.py
@@ -7,7 +6,8 @@
 import re
 from collections.abc import Container
 from functools import partial, reduce
-from typing import Any, Callable, Literal, Sequence, Union
+from typing import Any, Literal
+from collections.abc import Callable, Sequence
 
 import pandas as pd
 from sqlalchemy import (
@@ -34,7 +34,7 @@ from .utils import infer_sql_type
 
 
 def _insert_on_conflict_update(table, conn, keys, data_iter, indexes):
-    data = [dict(zip(keys, row)) for row in data_iter]
+    data = [dict(zip(keys, row, strict=False)) for row in data_iter]
     stmt = insert(table.table).values(data)
     stmt = stmt.on_conflict_do_update(index_elements=indexes, set_={k: getattr(stmt.excluded, k) for k in keys})
     result = conn.execute(stmt)
@@ -42,7 +42,7 @@ def _insert_on_conflict_update(table, conn, keys, data_iter, indexes):
 
 
 def _insert_on_conflict_nothing(table, conn, keys, data_iter):
-    data = [dict(zip(keys, row)) for row in data_iter]
+    data = [dict(zip(keys, row, strict=False)) for row in data_iter]
     stmt = insert(table.table).values(data).on_conflict_do_nothing(index_elements=keys)
     result = conn.execute(stmt)
     return result.rowcount
@@ -68,13 +68,13 @@ class SqlManager:
             self._inspector = inspect(self.engine)
         return self._inspector
 
-    def _execute(self, sql_executable: Union[str, Executable]) -> Any:
+    def _execute(self, sql_executable: str | Executable) -> Any:
         if isinstance(sql_executable, str):
             sql_executable = text(sql_executable)
         with self.engine.begin() as conn:
             return conn.execute(sql_executable)
 
-    def add_index(self, table_name: str, columns: Union[str, list[str]], unique: bool = True):
+    def add_index(self, table_name: str, columns: str | list[str], unique: bool = True):
         """
         Adds an index to a table.
 
@@ -154,7 +154,7 @@ class SqlManager:
         table_name: str,
         table_columns: list[tuple[str, TypeEngine | type | tuple[type, tuple]]],
         unique_index_columns: Sequence[str] = (),
-        primary_key: str | set[str] = set(),
+        primary_key: str | set[str] = None,  # empty string or set of column names
     ):
         """
         Creates a table.
@@ -170,7 +170,9 @@ class SqlManager:
 
         """
         table_meta = MetaData()
-        columns: list[Column|PrimaryKeyConstraint] = [Column(name, infer_sql_type(col_type)) for name, col_type in table_columns]
+        columns: list[Column | PrimaryKeyConstraint] = [
+            Column(name, infer_sql_type(col_type)) for name, col_type in table_columns
+        ]
         if isinstance(primary_key, str) and primary_key != "":
             columns.append(PrimaryKeyConstraint(primary_key))
         elif primary_key:
@@ -281,7 +283,7 @@ class SqlManager:
                 [
                     (
                         table.columns[field].in_(filter_values)
-                        if isinstance(filter_values, Container) and not isinstance(filter_values, (str, bytes))
+                        if isinstance(filter_values, Container) and not isinstance(filter_values, str | bytes)
                         else table.columns[field] == filter_values
                     )
                     for field, filter_values in filter_fields.items()
@@ -322,7 +324,7 @@ class SqlManager:
             conditions = [
                 (
                     table.columns[field].in_(filter_values)
-                    if isinstance(filter_values, Container) and not isinstance(filter_values, (str, bytes))
+                    if isinstance(filter_values, Container) and not isinstance(filter_values, str | bytes)
                     else table.columns[field] == filter_values
                 )
                 for field, filter_values in filter_fields.items()
@@ -339,7 +341,7 @@ class SqlManager:
         joined_columns: Sequence[str],
         query_fields: QUERYFIELD_TYPE = "*",
         filter_fields: FILTERFIELD_TYPE = None,
-        unique = False,
+        unique=False,
     ):
         """
         Reads data from multiple tables.
@@ -385,7 +387,7 @@ class SqlManager:
                 for field, filter_values in colnames.items():
                     conditions.append(
                         table.columns[field].in_(filter_values)
-                        if isinstance(filter_values, Container) and not isinstance(filter_values, (str, bytes))
+                        if isinstance(filter_values, Container) and not isinstance(filter_values, str | bytes)
                         else table.columns[field] == filter_values
                     )
 
@@ -427,7 +429,7 @@ class SqlManager:
             conditions = [
                 (
                     full_table.columns[field].in_(filter_values)
-                    if isinstance(filter_values, Container) and not isinstance(filter_values, (str, bytes))
+                    if isinstance(filter_values, Container) and not isinstance(filter_values, str | bytes)
                     else full_table.columns[field] == filter_values
                 )
                 for field, filter_values in filter_fields.items()

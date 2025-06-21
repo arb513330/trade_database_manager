@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2024/4/15 20:28
 # @Author  : YQ Tsui
 # @File    : metadata_sql.py
 # @Purpose : Instrument metadata stored in SQL database
 
 from collections.abc import Container
-from typing import Union, cast
+from typing import cast
 
 import pandas as pd
 
@@ -49,7 +48,18 @@ TYPE_METADATA_COLUMNS = {
         "putback_terms",
         "putback_type",
     ],
-    "FUT": ["contract_unit", "contract_multiplier", "expiry_time", "delivery_date", "settlement_method", "underlying_code", "underlying_exchange", "underlying_type", "margin_method", "sector"],
+    "FUT": [
+        "contract_unit",
+        "contract_multiplier",
+        "expiry_time",
+        "delivery_date",
+        "settlement_method",
+        "underlying_code",
+        "underlying_exchange",
+        "underlying_type",
+        "margin_method",
+        "sector",
+    ],
     "OPT": [
         "strike",
         "option_type",
@@ -96,16 +106,22 @@ class MetadataSql:
                 if inst_type not in TYPE_METADATA_COLUMNS:
                     raise ValueError(f"Invalid instrument type: {inst_type}")
                 if inst_type in {"FUT", "OPT"}:
-                    columns = BASE_COLUMNS + [(col, FIELD_DATA_TYPE_SQL[col]) for col in (COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS[inst_type])]
+                    columns = BASE_COLUMNS + [
+                        (col, FIELD_DATA_TYPE_SQL[col])
+                        for col in (COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS[inst_type])
+                    ]
                     self._manager.create_table(
-                        f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"})
+                        f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
+                    )
                 else:
-                    columns = BASE_COLUMNS + [(col, FIELD_DATA_TYPE_SQL[col]) for col in TYPE_METADATA_COLUMNS[inst_type]]
+                    columns = BASE_COLUMNS + [
+                        (col, FIELD_DATA_TYPE_SQL[col]) for col in TYPE_METADATA_COLUMNS[inst_type]
+                    ]
                     self._manager.create_table(
                         f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
                     )
 
-    def update_instrument_metadata(self, data: Union[pd.DataFrame, list[dict], dict]):
+    def update_instrument_metadata(self, data: pd.DataFrame | list[dict] | dict):
         """
         Updates the instrument metadata in the database.
 
@@ -127,13 +143,13 @@ class MetadataSql:
             columns = data.columns.intersection(COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS["FUT"])
             data_fut = data.loc[data["inst_type"] == "FUT", columns]
             self._manager.insert("instruments_fut", data_fut, upsert=True)
-            data.drop(index = data[data["inst_type"] == "FUT"].index, inplace=True)
+            data.drop(index=data[data["inst_type"] == "FUT"].index, inplace=True)
 
         if "OPT" in data["inst_type"].unique():
             columns = data.columns.intersection(COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS["OPT"])
             data_opt = data.loc[data["inst_type"] == "OPT", columns]
             self._manager.insert("instruments_opt", data_opt, upsert=True)
-            data.drop(index = data[data["inst_type"] == "OPT"].index, inplace=True)
+            data.drop(index=data[data["inst_type"] == "OPT"].index, inplace=True)
 
         data_common = data[data.columns.intersection(COMMON_METADATA_COLUMNS)]
 

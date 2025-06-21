@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2024/11/12 13:49
 # @Author  : YQ Tsui
 # @File    : metadata_sql_cb.py
@@ -11,7 +10,6 @@ from .typedefs import EXCHANGE_LITERALS, Opt_T_SeqT, T_SeqT
 
 
 class CBMetadataSql(MetadataSql):
-
     def read_latest_conversion_price(
         self,
         fields: T_SeqT[str] = ("conversion_price", "effective_date"),

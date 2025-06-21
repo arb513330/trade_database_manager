@@ -1,10 +1,10 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2024/4/22 16:18
 # @Author  : YQ Tsui
 # @File    : typedefs.py
 # @Purpose : Type hints for convenience
 
-from typing import Dict, Literal, Optional, Sequence, TypeVar, Union
+from typing import Literal, TypeVar
+from collections.abc import Sequence
 
 INST_TYPE_LITERALS = Literal["STK", "FUT", "OPT", "IDX", "ETF", "LOF", "FUND", "BOND", "CASH", "CRYPTO", "CB"]
 EXCHANGE_LITERALS = Literal[
@@ -41,8 +41,8 @@ EXCHANGE_LITERALS = Literal[
 ]
 
 T = TypeVar("T")
-T_SeqT = Union[T, Sequence[T]]
-Opt_T_SeqT = Optional[Union[T, Sequence[T]]]
+T_SeqT = T | Sequence[T]
+Opt_T_SeqT = T | Sequence[T] | None
 
-T_DictT = Union[T, Dict[str, T]]
-Opt_T_DictT = Optional[Union[T, Dict[str, T]]]
+T_DictT = T | dict[str, T]
+Opt_T_DictT = T | dict[str, T] | None
