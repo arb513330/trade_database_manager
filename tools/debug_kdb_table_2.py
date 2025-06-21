@@ -43,7 +43,7 @@ def get_bar_data(barlib, limit_lib, symbol, exchange, interval="1d", start=None,
 
 if __name__ == "__main__":
     user_dir = Path.home() / ".vntrader"
-    with open(user_dir / "vt_setting.json", "r") as f:
+    with open(user_dir / "vt_setting.json") as f:
         SETTINGS = json.load(f)
 
     def arctic_auth_hook(*_):
@@ -81,7 +81,7 @@ if __name__ == "__main__":
             df["exchange"] = exch
             logger.info(f"writing {ticker} {exch} {interval}")
             kdb_mgr.write_partitioned(
-                f"i1m",
+                "i1m",
                 df,
                 path="stk1",
                 partition_func=partial(_get_partition_bucket, bar_freq="1m"),

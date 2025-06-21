@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2024/11/19 17:42
 # @Author  : YQ Tsui
 # @File    : metadata_sql_fut.py
@@ -9,8 +8,8 @@ import pandas as pd
 from .metadata_sql import MetadataSql
 from .typedefs import EXCHANGE_LITERALS, Opt_T_SeqT, T_SeqT
 
-class FutMetadataSql(MetadataSql):
 
+class FutMetadataSql(MetadataSql):
     def get_all_underlying_codes(self) -> pd.Series:
         """
         Get all underlying codes
@@ -40,10 +39,16 @@ class FutMetadataSql(MetadataSql):
 
         fields = list(set(fields) | {"date", "underlying_code", "exchange"})
 
-        df = self._manager.read_data("fut_daily_auxiliary_data", fields, filter_fields={"underlying_code": underlyings} if underlyings is not None else None)
+        df = self._manager.read_data(
+            "fut_daily_auxiliary_data",
+            fields,
+            filter_fields={"underlying_code": underlyings} if underlyings is not None else None,
+        )
         return df.set_index(["underlying_code", "exchange", "date"])
 
-    def read_latest_daily_auxiliary_data(self, fields: T_SeqT[str] = "date",
+    def read_latest_daily_auxiliary_data(
+        self,
+        fields: T_SeqT[str] = "date",
         tickers: Opt_T_SeqT[str] = None,
         exchanges: Opt_T_SeqT[EXCHANGE_LITERALS] = None,
     ) -> pd.DataFrame:

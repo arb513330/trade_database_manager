@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2024/10/31 21:07
 # @Author  : YQ Tsui
 # @File    : utils.py
@@ -14,7 +13,7 @@ from sqlalchemy.types import DOUBLE_PRECISION, Date, DateTime, Integer, String, 
 def infer_sql_type(input_type):
     if isinstance(input_type, TypeEngine):
         return input_type
-    if isinstance(input_type, (tuple, list)):
+    if isinstance(input_type, tuple | list):
         input_type, *args = input_type
     else:
         args = ()
@@ -22,13 +21,13 @@ def infer_sql_type(input_type):
         if args:
             return String(*args)
         return Text()
-    if issubclass(input_type, (int, np.signedinteger)):
+    if issubclass(input_type, int | np.signedinteger):
         return Integer()
-    if issubclass(input_type, (np.floating, float)):
+    if issubclass(input_type, np.floating | float):
         return DOUBLE_PRECISION()
-    if issubclass(input_type, (bool, np.bool_)):
+    if issubclass(input_type, bool | np.bool_):
         return Integer()
-    if issubclass(input_type, (np.datetime64, pd.Timestamp, datetime)):
+    if issubclass(input_type, np.datetime64 | pd.Timestamp | datetime):
         return Date() if args and args[0] else DateTime()
     if issubclass(input_type, date):
         return Date()

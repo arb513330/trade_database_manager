@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2024/4/19 16:44
 # @Author  : YQ Tsui
 # @File    : fields_data_type.py
 # @Purpose :
 
-from sqlalchemy import DOUBLE_PRECISION, Date, Integer, String, Text, DateTime, CHAR
+from sqlalchemy import DOUBLE_PRECISION, Date, Integer, String, Text, DateTime
 
 FIELD_DATA_TYPE_SQL = {
     "ticker": String(20),
@@ -66,6 +65,14 @@ FIELD_DATA_TYPE_SQL = {
     "exercise_style": String(20),  # 'A' for American, 'E' for European
 }
 
-DATE_TIME_COLS = {"listed_date", "delisted_date", "maturity_date", "conversion_start_date", "conversion_end_date", "expiry_date", "delivery_date"}
+DATE_TIME_COLS = {
+    "listed_date",
+    "delisted_date",
+    "maturity_date",
+    "conversion_start_date",
+    "conversion_end_date",
+    "expiry_date",
+    "delivery_date",
+}
 
 BASE_COLUMNS = [("ticker", String(36)), ("exchange", String(10))]

@@ -16,7 +16,7 @@ def _get_partition_bucket(time_column: pd.Series, bar_freq: str):
 
 if __name__ == "__main__":
     kdb_mgr = KdbManager.instance()
-    logger.info(f"reading all start")
+    logger.info("reading all start")
     df = kdb_mgr.read_partitioned(
         "i1m",
         path="stk1",
@@ -24,6 +24,6 @@ if __name__ == "__main__":
         # start_time=pd.Timestamp("2021-01-01"), end_time=pd.Timestamp("2023-01-01"),
         other_conditions="ticker=`000606,exchange=`SZSE",
     )
-    logger.info(f"reading all done")
+    logger.info("reading all done")
     print(df)
     print(df.ticker.unique())

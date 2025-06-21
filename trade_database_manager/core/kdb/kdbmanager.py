@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2024/4/27 12:26
 # @Author  : YQ Tsui
 # @File    : kdbmanager.py
@@ -12,7 +11,6 @@ from ...config import CONFIG
 
 
 class KdbManager:
-
     _instance = None
 
     @classmethod
@@ -136,7 +134,7 @@ class KdbManager:
         time_format = "%Y.%m.%dD%H:%M:%S.%f"
         start_time_str = start_time.strftime(time_format) if start_time is not None else None
         end_time_str = end_time.strftime(time_format) if end_time is not None else None
-        if isinstance(fields, (bytes, str)):
+        if isinstance(fields, bytes | str):
             fields = [fields]
         select_clause = (
             f"select from {table_name}" if fields is None else f"select {','.join(fields)} from {table_name}"
