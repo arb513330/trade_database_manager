@@ -8,7 +8,7 @@ The common information of all instruments are stored in the `instruments` table.
 
 | Column Name   | Data Type      | Description                        |
 |---------------|----------------|------------------------------------|
-| ticker        | str            | Trade Symbol at exchange           |
+| ticker        | str            | Symbol                             |
 | exchange      | Enum[Exchange] | Primary exchange / Trade route etc |
 | trading_code  | str            | Trading code at exchange           |
 | name          | str            | Instrument name                    |
@@ -19,8 +19,8 @@ The common information of all instruments are stored in the `instruments` table.
 | lot_size      | float          | Lot size                           |
 | min_lots      | float          | Minimum lots to trade              |
 | market_tplus  | int            | T+? can sell                       |
-| listed_date   | datetime       | Listed date                        |
-| delisted_date | datetime       | Delisted date                      |
+| listed_date   | date           | Listed date                        |
+| delisted_date | date           | Delisted date                      |
 
 <!--| stop_trading_date | datetime       | Date the contract removed from trading (Can be different of delisting date for some instruments) |-->
 
@@ -29,26 +29,40 @@ Below table shows the columns in the type-specific tables (besides the symbol | 
 
 - Stock (STK)
     
-    | Columns      | Data Type | Instrument Types which requires the column |
-    |--------------|-----------|--------------------------------------------|
-    | country      | str       | Country                                    |
-    | state        | str       | State/Province                             |                             
-    | board_type   | str       | Mainboard etc.                             |                            
-    | issue_price  | float     | Stock issuing price                        |                        
+    | Columns     | Data Type | Description         |
+    |-------------|-----------|---------------------|
+    | country     | str       | Country             |
+    | state       | str       | State/Province      |                             
+    | board_type  | str       | Mainboard etc.      |                            
+    | issue_price | float     | Stock issuing price |                        
 
 - Future (FUT)
+
+    | Columns             | Data Type          | Description                               |
+    |---------------------|--------------------|-------------------------------------------| 
+    | contract_unit       | str                | Contract unit                             | 
+    | contract_multipler  | float              | Multiplier per lot                        | 
+    | expiry_time         | datetime           | Contract expirison                        |
+    | delivery_date       | date               | Delivery date                             | 
+    | settlement_method   | Enum[SettleMethod] | Settlement method                         | 
+    | underlying_code     | str                | Underlying for contract                   |
+    | underlying_exchange | str                | Underlying trading exchange (if tradable) |
+    | underlying_type     | Enum[InstType]     | Underlying type, stock, commodity, etc.   |
+    | sector              | str                | Sector of underlying                      |
+    | margin_method       | str                | method to calculate margin                |
+
 - LOF & ETF
    
-    | Columns      | Data Type | Instrument Types which requires the column |
-    |--------------|-----------|--------------------------------------------|
-    | country      | str       | Country                                    |
+    | Columns | Data Type | Description |
+    |---------|-----------|-------------|
+    | country | str       | Country     |
 
 - Index (IDX)
   There is no specifiec column for index.
 
 - Convertable Bond (CB)
     
-    | Columns               | Data Type | Instrument Types which requires the column        |
+    | Columns               | Data Type | Description                                       |
     |-----------------------|-----------|---------------------------------------------------|
     | country               | str       | Country                                           |
     | state                 | str       | State/Province                                    |
@@ -67,3 +81,20 @@ Below table shows the columns in the type-specific tables (besides the symbol | 
     | putback_type          | str       | Type of callback method                           |
     | adjust_terms          | str       | Terms of adjust convertion price                  |
     | adjust_type           | str       | Type of callback method                           |
+
+- Options
+ 
+    | Columns             | Data Type          | Description                               |
+    |---------------------|--------------------|-------------------------------------------| 
+    | strike              | float              | Option strike                             | 
+    | option_type         | Enum[OptionType]   | Option type                               | 
+    | exercise_style      | Enum[ExerciseType] | Exercise style                            | 
+    | contract_unit       | str                | Contract unit                             | 
+    | contract_multipler  | float              | Multiplier per lot                        | 
+    | expiry_time         | datetime           | Contract expirations                      |
+    | delivery_date       | date               | Delivery date                             | 
+    | settlement_method   | Enum[SettleMethod] | Settlement method                         | 
+    | underlying_code     | str                | Underlying for contract                   |
+    | underlying_exchange | str                | Underlying trading exchange (if tradable) |
+    | underlying_type     | Enum[InstType]     | Underlying type, stock, commodity, etc.   |
+    | margin_method       | str                | method to calculate margin                |

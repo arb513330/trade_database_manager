@@ -71,3 +71,25 @@
 | Active         | Normal, actively traded |
 | Delisted       | Delisted from exchange  |
 | Suspended      | Suspended from trading  |
+
+### Settlement Method
+
+| Enum[SettleMethod] | Description |
+|--------------------|-------------|
+| Cash               | Cash        |
+| Physical           | Physical    |
+
+
+### Option Type
+
+| Enum[OptionType] | Description |
+|------------------|-------------|
+| C                | Call        |
+| P                | Put         |
+
+### Option Type
+
+| Enum[ExerciseType] | Description |
+|--------------------|-------------|
+| A                  | American    |
+| E                  | European    |

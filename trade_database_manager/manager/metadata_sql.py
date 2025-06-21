@@ -49,6 +49,21 @@ TYPE_METADATA_COLUMNS = {
         "putback_terms",
         "putback_type",
     ],
+    "FUT": ["contract_unit", "contract_multiplier", "expiry_time", "delivery_date", "settlement_method", "underlying_code", "underlying_exchange", "underlying_type", "margin_method", "sector"],
+    "OPT": [
+        "strike",
+        "option_type",
+        "exercise_style",
+        "contract_unit",
+        "contract_multiplier",
+        "expiry_time",
+        "delivery_date",
+        "settlement_method",
+        "underlying_code",
+        "underlying_exchange",
+        "underlying_type",
+        "margin_method",
+    ],
 }
 
 
@@ -78,10 +93,17 @@ class MetadataSql:
             self._manager.create_table("instruments", columns, {"primary_key": ["ticker", "exchange"]})
         for inst_type in for_inst_types:
             if not self._manager.table_exists(f"instruments_{inst_type.lower()}"):
-                columns = BASE_COLUMNS + [(col, FIELD_DATA_TYPE_SQL[col]) for col in TYPE_METADATA_COLUMNS[inst_type]]
-                self._manager.create_table(
-                    f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
-                )
+                if inst_type not in TYPE_METADATA_COLUMNS:
+                    raise ValueError(f"Invalid instrument type: {inst_type}")
+                if inst_type in {"FUT", "OPT"}:
+                    columns = BASE_COLUMNS + [(col, FIELD_DATA_TYPE_SQL[col]) for col in (COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS[inst_type])]
+                    self._manager.create_table(
+                        f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"})
+                else:
+                    columns = BASE_COLUMNS + [(col, FIELD_DATA_TYPE_SQL[col]) for col in TYPE_METADATA_COLUMNS[inst_type]]
+                    self._manager.create_table(
+                        f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
+                    )
 
     def update_instrument_metadata(self, data: Union[pd.DataFrame, list[dict], dict]):
         """
@@ -90,11 +112,8 @@ class MetadataSql:
         :param data: The data to be updated. It can be a DataFrame, a list of dictionaries, or a single dictionary.
         :type data: Union[pd.DataFrame, list[dict], dict]
         """
-        type_specific_columns = set(data.columns) - set(COMMON_METADATA_COLUMNS)
-        if "inst_type" not in data.columns and bool(type_specific_columns):
-            raise ValueError(
-                f"Non-common columns found ({','.join(type_specific_columns)}) but inst_type column not provided."
-            )
+        if "inst_type" not in data.columns:
+            raise ValueError("`inst_type` column not provided.")
         if isinstance(data, dict):
             data = [data]
         if isinstance(data, list):
@@ -103,6 +122,19 @@ class MetadataSql:
             data.set_index(["ticker", "exchange"], inplace=True)
         else:
             assert set(data.index.names) == {"ticker", "exchange"}, "Index names must be 'ticker' and 'exchange'."
+
+        if "FUT" in data["inst_type"].unique():
+            columns = data.columns.intersection(COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS["FUT"])
+            data_fut = data.loc[data["inst_type"] == "FUT", columns]
+            self._manager.insert("instruments_fut", data_fut, upsert=True)
+            data.drop(index = data[data["inst_type"] == "FUT"].index, inplace=True)
+
+        if "OPT" in data["inst_type"].unique():
+            columns = data.columns.intersection(COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS["OPT"])
+            data_opt = data.loc[data["inst_type"] == "OPT", columns]
+            self._manager.insert("instruments_opt", data_opt, upsert=True)
+            data.drop(index = data[data["inst_type"] == "OPT"].index, inplace=True)
+
         data_common = data[data.columns.intersection(COMMON_METADATA_COLUMNS)]
 
         self._manager.insert("instruments", data_common, upsert=True)
@@ -120,6 +152,7 @@ class MetadataSql:
             if col in data.columns:
                 data[col] = data[col].apply(pd.to_datetime)
 
+    # TODO: Add support for Futures and Options as they don't use the common metadata columns
     def read_metadata(
         self,
         ticker: Opt_T_SeqT[str] = None,
@@ -244,7 +277,11 @@ class MetadataSql:
         }
         filter_fields_type = {k: v for k, v in filter_fields.items() if k in TYPE_METADATA_COLUMNS.get(inst_type, [])}
 
-        if (
+        if inst_type in {"FUT", "OPT"}:
+            df = self._manager.read_data(
+                f"instruments_{inst_type.lower()}", query_fields=query_fields, filter_fields=filter_fields
+            )
+        elif (
             (query_fields != "*" or inst_type not in TYPE_METADATA_COLUMNS)
             and not bool(query_fields_type)
             and not bool(filter_fields_type)

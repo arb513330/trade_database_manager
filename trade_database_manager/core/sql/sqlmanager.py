@@ -170,7 +170,7 @@ class SqlManager:
 
         """
         table_meta = MetaData()
-        columns = [Column(name, infer_sql_type(col_type)) for name, col_type in table_columns]
+        columns: list[Column|PrimaryKeyConstraint] = [Column(name, infer_sql_type(col_type)) for name, col_type in table_columns]
         if isinstance(primary_key, str) and primary_key != "":
             columns.append(PrimaryKeyConstraint(primary_key))
         elif primary_key:
@@ -241,8 +241,26 @@ class SqlManager:
         query_fields="*",
         start_time: pd.Timestamp = None,
         end_time: pd.Timestamp = None,
+        time_column: str = "timestamp",
         filter_fields=None,
     ):
+        """
+        Read data from a table within a time range.
+
+        :param table_name:
+        :type str
+        :param query_fields:
+        :type QUERYFIELD_TYPE
+        :param start_time:
+        :type pd.Timestamp
+        :param end_time:
+        :type pd.Timestamp
+        :param time_column:
+        :type str
+        :param filter_fields:
+        :type FILTERFIELD_TYPE
+        :return:
+        """
         meta = MetaData()
         table = Table(table_name, meta, autoload_with=self.engine)
 
@@ -255,9 +273,9 @@ class SqlManager:
 
         conditions = []
         if start_time:
-            conditions.append(getattr(table.c, "timestamp", table.c.end_time) >= start_time)
+            conditions.append(getattr(table.c, time_column, table.c.end_time) >= start_time)
         if end_time:
-            conditions.append(getattr(table.c, "timestamp", table.c.start_time) <= end_time)
+            conditions.append(getattr(table.c, time_column, table.c.start_time) <= end_time)
         if filter_fields:
             conditions.extend(
                 [
@@ -273,7 +291,7 @@ class SqlManager:
         res = self._execute(stmt)
         return pd.DataFrame(res.fetchall(), columns=res.keys())
 
-    def read_data(self, table_name: str, query_fields: QUERYFIELD_TYPE = "*", filter_fields=None):
+    def read_data(self, table_name: str, query_fields: QUERYFIELD_TYPE = "*", filter_fields=None, unique=False):
         """
         Reads data from a table.
 
@@ -297,6 +315,9 @@ class SqlManager:
             query_fields = table
             stmt = select(table)
 
+        if unique:
+            stmt = stmt.distinct()
+
         if filter_fields:
             conditions = [
                 (
@@ -318,6 +339,7 @@ class SqlManager:
         joined_columns: Sequence[str],
         query_fields: QUERYFIELD_TYPE = "*",
         filter_fields: FILTERFIELD_TYPE = None,
+        unique = False,
     ):
         """
         Reads data from multiple tables.
@@ -352,6 +374,9 @@ class SqlManager:
             query_fields_rel = [text("*")]
 
         stmt = select(*query_fields_rel).select_from(joined_table)
+
+        if unique:
+            stmt = stmt.distinct()
 
         if filter_fields:
             conditions = []
