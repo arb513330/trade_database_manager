@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trade_database_manager"
-version = "0.0.7.dev2"
+version = "0.0.8"
 description = "A wrapper of kdb and sql for convenient trade data management."
 readme = "README.md"
 authors = [
