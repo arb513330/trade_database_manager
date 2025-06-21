@@ -16,7 +16,7 @@ class FutMetadataSql(MetadataSql):
         """
         return self._manager.read_data("instruments_fut", ["underlying_code"], unique=True)
 
-    def read_daily_auxiliary_data(self, fields: T_SeqT[str], underlyings: T_SeqT[str] = None) -> pd.DataFrame:
+    def read_dominant_contracts(self, fields: T_SeqT[str], underlyings: T_SeqT[str] = None) -> pd.DataFrame:
         """
         Read daily auxiliary data
 
@@ -40,13 +40,13 @@ class FutMetadataSql(MetadataSql):
         fields = list(set(fields) | {"date", "underlying_code", "exchange"})
 
         df = self._manager.read_data(
-            "fut_daily_auxiliary_data",
+            "fut_dominant_contracts",
             fields,
             filter_fields={"underlying_code": underlyings} if underlyings is not None else None,
         )
         return df.set_index(["underlying_code", "exchange", "date"])
 
-    def read_latest_daily_auxiliary_data(
+    def read_latest_dominant_contracts(
         self,
         fields: T_SeqT[str] = "date",
         tickers: Opt_T_SeqT[str] = None,
@@ -69,6 +69,6 @@ class FutMetadataSql(MetadataSql):
                 filter_fields["exchange"] = exchanges
 
         df = self._manager.read_max_in_group(
-            "fut_daily_auxiliary_data", fields, ["underlying_code", "exchange"], "date", filter_fields=filter_fields
+            "fut_dominant_contracts", fields, ["underlying_code", "exchange"], "date", filter_fields=filter_fields
         )
         return df.set_index(["underlying_code", "exchange"])
