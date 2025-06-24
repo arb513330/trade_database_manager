@@ -72,3 +72,17 @@ class FutMetadataSql(MetadataSql):
             "fut_dominant_contracts", fields, ["underlying_code", "exchange"], "date", filter_fields=filter_fields
         )
         return df.set_index(["underlying_code", "exchange"])
+
+    def update_dominant_contracts(self, data: pd.DataFrame):
+        """
+        Update dominant contracts data
+
+        Parameters
+        ----------
+        data : pd.DataFrame
+            The data to update, must contain columns: underlying_code, exchange, date, dominant, subdominant.
+        """
+        if not {"underlying_code", "exchange", "date", "dominant", "subdominant"}.issubset(data.columns):
+            raise ValueError("Data must contain columns: underlying_code, exchange, date, dominant, subdominant.")
+
+        self._manager.insert("fut_dominant_contracts", data, upsert=True)
