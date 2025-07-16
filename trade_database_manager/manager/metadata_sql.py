@@ -239,7 +239,7 @@ class MetadataSql:
             type_df = self._manager.read_data(
                 f"instruments_{inst_type.lower()}", query_fields=query_fields_type, filter_fields=filter_fields_type
             )
-            type_df = common_df_by_type.merge(type_df, on=["ticker", "exchange"], how="inner")
+            type_df = common_df_by_type.merge(type_df, on=["ticker", "exchange"], how="outer")
             res[inst_type] = type_df.set_index(["ticker", "exchange"]) if len(type_df.columns) > 2 else type_df
         return res
 
