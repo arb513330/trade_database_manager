@@ -105,21 +105,22 @@ class MetadataSql:
             if not self._manager.table_exists(f"instruments_{inst_type.lower()}"):
                 if inst_type not in TYPE_METADATA_COLUMNS:
                     raise ValueError(f"Invalid instrument type: {inst_type}")
-                if inst_type in {"FUT", "OPT"}:
-                    columns = BASE_COLUMNS + [
-                        (col, FIELD_DATA_TYPE_SQL[col])
-                        for col in (COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS[inst_type])
-                    ]
-                    self._manager.create_table(
-                        f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
-                    )
-                else:
-                    columns = BASE_COLUMNS + [
-                        (col, FIELD_DATA_TYPE_SQL[col]) for col in TYPE_METADATA_COLUMNS[inst_type]
-                    ]
-                    self._manager.create_table(
-                        f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
-                    )
+                # if inst_type in {"FUT", "OPT"}:
+                #     columns = BASE_COLUMNS + [
+                #         (col, FIELD_DATA_TYPE_SQL[col])
+                #         for col in (COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS[inst_type])
+                #     ]
+                #     self._manager.create_table(
+                #         f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
+                #     )
+                # else:
+
+                columns = BASE_COLUMNS + [
+                    (col, FIELD_DATA_TYPE_SQL[col]) for col in TYPE_METADATA_COLUMNS[inst_type]
+                ]
+                self._manager.create_table(
+                    f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
+                )
 
     def update_instrument_metadata(self, data: pd.DataFrame | list[dict] | dict):
         """
@@ -139,17 +140,17 @@ class MetadataSql:
         else:
             assert set(data.index.names) == {"ticker", "exchange"}, "Index names must be 'ticker' and 'exchange'."
 
-        if "FUT" in data["inst_type"].unique():
-            columns = data.columns.intersection(COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS["FUT"])
-            data_fut = data.loc[data["inst_type"] == "FUT", columns]
-            self._manager.insert("instruments_fut", data_fut, upsert=True)
-            data.drop(index=data[data["inst_type"] == "FUT"].index, inplace=True)
-
-        if "OPT" in data["inst_type"].unique():
-            columns = data.columns.intersection(COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS["OPT"])
-            data_opt = data.loc[data["inst_type"] == "OPT", columns]
-            self._manager.insert("instruments_opt", data_opt, upsert=True)
-            data.drop(index=data[data["inst_type"] == "OPT"].index, inplace=True)
+        # if "FUT" in data["inst_type"].unique():
+        #     columns = data.columns.intersection(COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS["FUT"])
+        #     data_fut = data.loc[data["inst_type"] == "FUT", columns]
+        #     self._manager.insert("instruments_fut", data_fut, upsert=True)
+        #     data.drop(index=data[data["inst_type"] == "FUT"].index, inplace=True)
+        #
+        # if "OPT" in data["inst_type"].unique():
+        #     columns = data.columns.intersection(COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS["OPT"])
+        #     data_opt = data.loc[data["inst_type"] == "OPT", columns]
+        #     self._manager.insert("instruments_opt", data_opt, upsert=True)
+        #     data.drop(index=data[data["inst_type"] == "OPT"].index, inplace=True)
 
         data_common = data[data.columns.intersection(COMMON_METADATA_COLUMNS)]
 
@@ -293,11 +294,12 @@ class MetadataSql:
         }
         filter_fields_type = {k: v for k, v in filter_fields.items() if k in TYPE_METADATA_COLUMNS.get(inst_type, [])}
 
-        if inst_type in {"FUT", "OPT"}:
-            df = self._manager.read_data(
-                f"instruments_{inst_type.lower()}", query_fields=query_fields, filter_fields=filter_fields
-            )
-        elif (
+        # if inst_type in {"FUT", "OPT"}:
+        #     df = self._manager.read_data(
+        #         f"instruments_{inst_type.lower()}", query_fields=query_fields, filter_fields=filter_fields
+        #     )
+        #elif (
+        if (
             (query_fields != "*" or inst_type not in TYPE_METADATA_COLUMNS)
             and not bool(query_fields_type)
             and not bool(filter_fields_type)
