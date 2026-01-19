@@ -32,7 +32,10 @@ if __name__ == "__main__":
         "password": args.password,
         "kdbhost": kdb_host,
         "kdbport": args.kdbport,
-        "sqlconnstr": f"{sql_protocol}://{args.username}:{args.password}@{sql_host}:{args.sqlport}/{args.sqldb}",
+        "sqlhost": sql_host,
+        "sqlport": args.sqlport,
+        "sqldbname": args.sqldb,
+        # "sqlconnstr": f"{sql_protocol}://{args.username}:{args.password}@{sql_host}:{args.sqlport}/{args.sqldb}",
     }
 
     yaml = YAML(typ="safe")
