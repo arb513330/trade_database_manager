@@ -4,6 +4,7 @@
 # @Purpose : Core SQL operations
 
 import re
+import importlib.util
 from collections.abc import Container
 from functools import partial, reduce
 from typing import Any, Literal
@@ -58,7 +59,9 @@ class SqlManager:
     """
 
     def __init__(self):
-        self.engine = create_engine(CONFIG["sqlconnstr"])
+        sql_protocol = "postgresql" if importlib.util.find_spec("psycopg2") is None else "postgresql+psycopg2"
+        sqlconnstr = f"{sql_protocol}://{CONFIG['username']}:{CONFIG['password']}@{CONFIG['sqlhost']}:{CONFIG['sqlport']}/{CONFIG['sqldbname']}"
+        self.engine = create_engine(sqlconnstr)
         self._session = sessionmaker(bind=self.engine)()  # TODO: is it better to be a class attribute?
         self._inspector = None
 
