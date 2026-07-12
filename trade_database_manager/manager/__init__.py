@@ -7,4 +7,6 @@ from .metadata_sql.metadata_sql import MetadataSql
 from .metadata_sql.metadata_sql_cb import CBMetadataSql
 from .metadata_sql.metadata_sql_fut import FutMetadataSql
 
-__all__ = ("MetadataSql", "CBMetadataSql", "FutMetadataSql")
+from .kline.kline_questdb import KLineManager
+
+__all__ = ("MetadataSql", "CBMetadataSql", "FutMetadataSql", "KLineManager")
