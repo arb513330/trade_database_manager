@@ -186,7 +186,7 @@ class QuestManager:
         symbols = symbol_columns or []
         n_rows = 0
         try:
-            with Sender.from_conf(f"http::addr={self._host}:9000;") as sender:
+            with Sender.from_conf(f"tcp::addr={self._host}:{self._ilp_port};username={self._username};password={self._password}") as sender:
                 for _, row in df.iterrows():
                     row_symbols = {
                         col: str(row[col])
