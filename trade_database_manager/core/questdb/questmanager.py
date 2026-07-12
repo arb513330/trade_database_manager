@@ -34,7 +34,7 @@ class QuestManager:
         self._host = CONFIG.get("questdb_host", "localhost")
         self._pg_port = CONFIG.get("questdb_pg_port", 8812)
         self._ilp_port = CONFIG.get("questdb_ilp_port", 9009)
-        self._username = CONFIG.get("questdb_username", "admin")
+        self._username = CONFIG.get("questdb_user", "admin")
         self._password = CONFIG.get("questdb_password", "quest")
         self._table_meta: dict[str, dict] = {}
 
