@@ -5,6 +5,7 @@
 
 import pandas as pd
 
+from ..typedefs import Interval
 from ...core.questdb.questmanager import QuestManager
 
 
@@ -20,16 +21,14 @@ class KLineManager:
         self.qm = QuestManager()
 
     @staticmethod
-    def _infer_partition(interval: str) -> str:
-        if interval.endswith(("d", "w", "M")):
-            return "YEAR"
-        return "MONTH"
+    def _infer_partition(interval: Interval) -> str:
+        return "MONTH" if interval.value < Interval.DAY.value else "YEAR"
 
     @staticmethod
-    def _table_name(inst_type: str, interval: str) -> str:
-        return f"{inst_type}_{interval}"
+    def _table_name(inst_type: str, interval: Interval) -> str:
+        return f"{inst_type}_{interval.name}"
 
-    def create_table(self, inst_type: str, interval: str):
+    def create_table(self, inst_type: str, interval: Interval):
         partition = self._infer_partition(interval)
         self.qm.create_table(
             table_name=self._table_name(inst_type, interval),
@@ -52,16 +51,16 @@ class KLineManager:
             symbol_columns=["full_symbol"],
         )
 
-    def upsert(self, inst_type: str, interval: str, df: pd.DataFrame):
+    def upsert(self, inst_type: str, interval: Interval, df: pd.DataFrame):
+
+        assert isinstance(df.index, pd.MultiIndex) and set(df.index.names) == {"timestamp", "full_symbol"}, "DataFrame index must be a MultiIndex with timestamp and full_symbol"
+        assert set(df.columns) >= {"open", "high", "low", "close", "volume", "money", "open_interest", "vwap"}, "DataFrame must contain all required columns"
+
         table = self._table_name(inst_type, interval)
         if not self.qm.table_exists(table):
             self.create_table(inst_type, interval)
 
         df_flat = df.reset_index()
-        if df.index.names[0] is not None:
-            df_flat.rename(columns={df.index.names[0]: "timestamp"}, inplace=True)
-        if len(df.index.names) > 1 and df.index.names[1] is not None:
-            df_flat.rename(columns={df.index.names[1]: "full_symbol"}, inplace=True)
 
         self.qm.insert(
             table,
@@ -73,7 +72,7 @@ class KLineManager:
     def read_range(
         self,
         inst_type: str,
-        interval: str,
+        interval: Interval,
         symbols: list[str] = None,
         start_time=None,
         end_time=None,
