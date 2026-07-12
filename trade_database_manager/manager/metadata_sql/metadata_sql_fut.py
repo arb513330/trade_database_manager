@@ -6,7 +6,7 @@
 import pandas as pd
 
 from .metadata_sql import MetadataSql
-from .typedefs import EXCHANGE_LITERALS, Opt_T_SeqT, T_SeqT
+from ..typedefs import EXCHANGE_LITERALS, Opt_T_SeqT, T_SeqT
 
 
 class FutMetadataSql(MetadataSql):
