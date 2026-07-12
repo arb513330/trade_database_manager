@@ -1,6 +1,6 @@
-# DATA ORGANIZATION
+# DATA ORGANIZATION - METADATA
 
-This file specifys the data organization in the database.
+This file specifys the meta data organization in the database.
 
 ### Instrument Metadata
 
