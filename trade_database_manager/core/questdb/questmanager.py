@@ -32,18 +32,18 @@ class QuestManager:
 
     def __init__(self):
         self._host = CONFIG.get("questdb_host", "localhost")
-        self._pg_port = CONFIG.get("questdb_pg_port", 8812)
-        self._ilp_port = CONFIG.get("questdb_ilp_port", 9009)
         self._username = CONFIG.get("questdb_user", "admin")
-        self._password = CONFIG.get("questdb_password", "quest")
+        self._pg_config = CONFIG.get("questdb_pg", {})
+        self._ilp_config = CONFIG.get("questdb_ilp", {})
+
         self._table_meta: dict[str, dict] = {}
 
     def _get_conn(self) -> psycopg.Connection:
         return psycopg.connect(
             host=self._host,
-            port=self._pg_port,
+            port=self._pg_config.get("port", 8812),
             user=self._username,
-            password=self._password,
+            password=self._pg_config.get("password", "quest"),
             dbname="qdb",
             autocommit=True,
         )
@@ -186,7 +186,12 @@ class QuestManager:
         symbols = symbol_columns or []
         n_rows = 0
         try:
-            with Sender.from_conf(f"tcp::addr={self._host}:{self._ilp_port};username={self._username};password={self._password}") as sender:
+            conf = (
+                f"tcp::addr={self._host}:{self._ilp_config.get('port', 9009)};username={self._username};"
+                f"token={self._ilp_config.get('token_d', '')};token_x={self._ilp_config.get('token_x', '')};"
+                f"token_y={self._ilp_config.get('token_y', '')}"
+            )
+            with Sender.from_conf(conf) as sender:
                 for _, row in df.iterrows():
                     row_symbols = {
                         col: str(row[col])
