@@ -59,7 +59,7 @@ class SqlManager:
     """
 
     def __init__(self):
-        sql_protocol = "postgresql" if importlib.util.find_spec("psycopg2") is None else "postgresql+psycopg2"
+        sql_protocol = "postgresql" if importlib.util.find_spec("psycopg") is None else "postgresql+psycopg"
         sqlconnstr = f"{sql_protocol}://{CONFIG['username']}:{CONFIG['password']}@{CONFIG['sqlhost']}:{CONFIG['sqlport']}/{CONFIG['sqldbname']}"
         self.engine = create_engine(sqlconnstr)
         self._session = sessionmaker(bind=self.engine)()  # TODO: is it better to be a class attribute?
