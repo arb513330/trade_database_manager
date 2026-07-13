@@ -4,8 +4,7 @@
 # @Purpose : Manage QuestDB operations via PG wire + ILP
 
 from collections.abc import Container, Sequence
-from datetime import date, datetime
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -13,7 +12,6 @@ import psycopg
 from questdb.ingress import Sender, IngressError
 
 from ...config import CONFIG
-from ..typedefs import FILTERFIELD_TYPE, QUERYFIELD_TYPE
 from .utils import infer_questdb_type
 
 
@@ -68,17 +66,11 @@ class QuestManager:
 
     def _load_table_meta(self, table_name: str) -> dict:
         if table_name not in self._table_meta:
-            sql = (
-                "SELECT column_name, data_type "
-                "FROM information_schema.columns "
-                f"WHERE table_name = '{table_name}'"
-            )
+            sql = f"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{table_name}'"
             columns = self._execute_sql(sql)
             designated_ts = None
             try:
-                row = self._execute_sql(
-                    f"SELECT designatedTimestamp FROM tables() WHERE table_name = '{table_name}'"
-                )
+                row = self._execute_sql(f"SELECT designatedTimestamp FROM tables() WHERE table_name = '{table_name}'")
                 if row:
                     designated_ts = row[0][0]
             except Exception:
@@ -119,10 +111,7 @@ class QuestManager:
         return value
 
     def table_exists(self, table_name: str) -> bool:
-        rows = self._execute_sql(
-            "SELECT table_name FROM information_schema.tables "
-            f"WHERE table_name = '{table_name}'"
-        )
+        rows = self._execute_sql(f"SELECT table_name FROM information_schema.tables WHERE table_name = '{table_name}'")
         return len(rows) > 0
 
     def create_table(
@@ -186,19 +175,15 @@ class QuestManager:
         symbols = symbol_columns or []
         n_rows = 0
         try:
-            with Sender.from_conf(f"tcp::addr={self._host}:{self._ilp_port};username={self._username};password={self._password}") as sender:
+            with Sender.from_conf(
+                f"tcp::addr={self._host}:{self._ilp_port};username={self._username};password={self._password}"
+            ) as sender:
                 for _, row in df.iterrows():
-                    row_symbols = {
-                        col: str(row[col])
-                        for col in symbols
-                        if col in df.columns and not pd.isna(row[col])
-                    }
+                    row_symbols = {col: str(row[col]) for col in symbols if col in df.columns and not pd.isna(row[col])}
                     row_columns = {
                         col: self._to_ilp_value(row[col])
                         for col in df.columns
-                        if col != designated_timestamp
-                        and col not in symbols
-                        and not pd.isna(row[col])
+                        if col != designated_timestamp and col not in symbols and not pd.isna(row[col])
                     }
                     ts = row[designated_timestamp]
                     if isinstance(ts, pd.Timestamp):
@@ -209,9 +194,7 @@ class QuestManager:
                     n_rows += 1
                 sender.flush()
         except IngressError as exc:
-            raise RuntimeError(
-                f"ILP insert failed for {table_name} ({n_rows} of {len(df)} rows sent)"
-            ) from exc
+            raise RuntimeError(f"ILP insert failed for {table_name} ({n_rows} of {len(df)} rows sent)") from exc
         return n_rows
 
     def _insert_sql(self, table_name: str, df: pd.DataFrame) -> int:
@@ -312,17 +295,14 @@ class QuestManager:
             select_clause = "*"
 
         if join_type == "asof":
-            sql = (
-                f"SELECT {select_clause} FROM {t0} "
-                f"ASOF JOIN {t1} ON ({', '.join(join_columns)})"
-            )
+            sql = f"SELECT {select_clause} FROM {t0} ASOF JOIN {t1} ON ({', '.join(join_columns)})"
         else:
             join_cond = " AND ".join(f"{t0}.{c} = {t1}.{c}" for c in join_columns)
             sql = f"SELECT {select_clause} FROM {t0} INNER JOIN {t1} ON {join_cond}"
 
         if filter_fields:
             conditions = []
-            for tn, ff in filter_fields.items():
+            for _tn, ff in filter_fields.items():
                 where = self._build_where(ff)
                 if where:
                     conditions.append(where)
@@ -340,7 +320,12 @@ class QuestManager:
         filter_fields=None,
     ) -> pd.DataFrame:
         return self._read_extremum_in_group(
-            table_name, target_column, group_column, extremum_column, "DESC", filter_fields,
+            table_name,
+            target_column,
+            group_column,
+            extremum_column,
+            "DESC",
+            filter_fields,
         )
 
     def read_min_in_group(
@@ -352,7 +337,12 @@ class QuestManager:
         filter_fields=None,
     ) -> pd.DataFrame:
         return self._read_extremum_in_group(
-            table_name, target_column, group_column, extremum_column, "ASC", filter_fields,
+            table_name,
+            target_column,
+            group_column,
+            extremum_column,
+            "ASC",
+            filter_fields,
         )
 
     def _read_extremum_in_group(
