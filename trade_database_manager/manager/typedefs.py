@@ -48,6 +48,7 @@ Opt_T_SeqT = T | Sequence[T] | None
 T_DictT = T | dict[str, T]
 Opt_T_DictT = T | dict[str, T] | None
 
+
 class Interval(Enum):
     """Interval for time series data."""
 

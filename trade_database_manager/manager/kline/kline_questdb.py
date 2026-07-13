@@ -53,8 +53,12 @@ class KLineManager:
 
     def upsert(self, inst_type: str, interval: Interval, df: pd.DataFrame):
 
-        assert isinstance(df.index, pd.MultiIndex) and set(df.index.names) == {"timestamp", "full_symbol"}, "DataFrame index must be a MultiIndex with timestamp and full_symbol"
-        assert set(df.columns) >= {"open", "high", "low", "close", "volume", "money", "open_interest", "vwap"}, "DataFrame must contain all required columns"
+        assert isinstance(df.index, pd.MultiIndex) and set(df.index.names) == {"timestamp", "full_symbol"}, (
+            "DataFrame index must be a MultiIndex with timestamp and full_symbol"
+        )
+        assert set(df.columns) >= {"open", "high", "low", "close", "volume", "money", "open_interest", "vwap"}, (
+            "DataFrame must contain all required columns"
+        )
 
         table = self._table_name(inst_type, interval)
         if not self.qm.table_exists(table):
