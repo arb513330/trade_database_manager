@@ -105,19 +105,7 @@ class MetadataSql:
             if not self._manager.table_exists(f"instruments_{inst_type.lower()}"):
                 if inst_type not in TYPE_METADATA_COLUMNS:
                     raise ValueError(f"Invalid instrument type: {inst_type}")
-                # if inst_type in {"FUT", "OPT"}:
-                #     columns = BASE_COLUMNS + [
-                #         (col, FIELD_DATA_TYPE_SQL[col])
-                #         for col in (COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS[inst_type])
-                #     ]
-                #     self._manager.create_table(
-                #         f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
-                #     )
-                # else:
-
-                columns = BASE_COLUMNS + [
-                    (col, FIELD_DATA_TYPE_SQL[col]) for col in TYPE_METADATA_COLUMNS[inst_type]
-                ]
+                columns = BASE_COLUMNS + [(col, FIELD_DATA_TYPE_SQL[col]) for col in TYPE_METADATA_COLUMNS[inst_type]]
                 self._manager.create_table(
                     f"instruments_{inst_type.lower()}", columns, primary_key={"ticker", "exchange"}
                 )
@@ -298,7 +286,7 @@ class MetadataSql:
         #     df = self._manager.read_data(
         #         f"instruments_{inst_type.lower()}", query_fields=query_fields, filter_fields=filter_fields
         #     )
-        #elif (
+        # elif (
         if (
             (query_fields != "*" or inst_type not in TYPE_METADATA_COLUMNS)
             and not bool(query_fields_type)

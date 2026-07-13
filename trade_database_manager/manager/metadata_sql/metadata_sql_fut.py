@@ -83,7 +83,7 @@ class FutMetadataSql(MetadataSql):
             The data to update, must contain columns: underlying_code, exchange, date, dominant, subdominant.
         """
         if not {"underlying_code", "exchange", "date", "dominant", "subdominant"}.issubset(
-                data.columns.to_list() + list(data.index.names)
+            data.columns.to_list() + list(data.index.names)
         ):
             raise ValueError("Data must contain columns: underlying_code, exchange, date, dominant, subdominant.")
 
