@@ -84,10 +84,14 @@ class KLineManager:
     ) -> pd.DataFrame:
         table = self._table_name(inst_type, interval)
         filter_fields = {"full_symbol": symbols} if symbols else None
-
+        if columns is not None:
+            seen = {"timestamp", "full_symbol"}
+            query_fields = ["timestamp", "full_symbol"] + [c for c in columns if c not in seen]
+        else:
+            query_fields = "*"
         result = self.qm.read_range_data(
             table,
-            query_fields=columns or "*",
+            query_fields=query_fields,
             start_time=start_time,
             end_time=end_time,
             time_column="timestamp",
@@ -100,14 +104,20 @@ class KLineManager:
     def read_newest(
         self,
         inst_type: str,
-        interval: str,
+        interval: Interval,
         symbols: list[str] = None,
+        columns: list[str] = None,
     ) -> pd.DataFrame:
         table = self._table_name(inst_type, interval)
         filter_fields = {"full_symbol": symbols} if symbols else None
-
+        if columns is not None:
+            seen = {"timestamp", "full_symbol"}
+            query_fields = ["timestamp", "full_symbol"] + [c for c in columns if c not in seen]
+        else:
+            query_fields = "*"
         result = self.qm.latest_on(
             table,
+            query_fields=query_fields,
             partition_by="full_symbol",
             timestamp_column="timestamp",
             filter_fields=filter_fields,

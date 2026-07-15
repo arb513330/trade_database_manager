@@ -412,12 +412,13 @@ class QuestManager:
         partition_by,
         timestamp_column: str = None,
         filter_fields=None,
+        query_fields="*",
     ) -> pd.DataFrame:
         meta = self._load_table_meta(table_name)
         ts_col = timestamp_column or meta.get("designated_timestamp", "timestamp")
-
+        fields = "*" if query_fields == "*" else ", ".join(query_fields)
         partition = ", ".join(partition_by) if isinstance(partition_by, list) else partition_by
-        sql = f"SELECT * FROM {table_name}"
+        sql = f"SELECT {fields} FROM {table_name}"
         where = self._build_where(filter_fields)
         if where:
             sql += f" WHERE {where}"
