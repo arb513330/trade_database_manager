@@ -113,5 +113,5 @@ class KLineManager:
             filter_fields=filter_fields,
         )
         if not result.empty and "timestamp" in result.columns and "full_symbol" in result.columns:
-            result = result.set_index(["timestamp", "full_symbol"])
+            result = result.set_index("full_symbol").rename(columns={"timestamp": "latest_timestamp"})
         return result
