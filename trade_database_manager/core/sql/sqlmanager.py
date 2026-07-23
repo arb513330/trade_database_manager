@@ -105,6 +105,7 @@ class SqlManager:
         upsert: bool = True,
         other_unique_index_columns: Sequence[str] = (),
         other_non_unique_index_columns: Sequence[str] = (),
+        chunksize: int = 2048,
     ):
         """
         Inserts data into a table.
@@ -119,6 +120,8 @@ class SqlManager:
         :type other_unique_index_columns: Sequence[str]
         :param other_non_unique_index_columns: Other columns to add non-unique indexes to. Defaults to an empty sequence.
         :type other_non_unique_index_columns: Sequence[str]
+        :param chunksize: The number of rows to insert at a time. Defaults to 2048.
+        :type chunksize: int
         :return: The number of rows inserted.
         :rtype: int
         """
@@ -132,6 +135,7 @@ class SqlManager:
             index=True,
             index_label=df.index.names,
             method=method,
+            chunksize=chunksize,
         )
         if new_table:
             self.add_index(table_name, df.index.names, unique=True)
