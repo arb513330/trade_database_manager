@@ -63,7 +63,7 @@ TYPE_METADATA_COLUMNS = {
     "OPT": [
         "strike",
         "option_type",
-        "exercise_style",
+        "exercise_type",
         "contract_unit",
         "contract_multiplier",
         "expiry_time",
