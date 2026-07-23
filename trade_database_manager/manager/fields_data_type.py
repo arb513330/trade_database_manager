@@ -62,7 +62,7 @@ FIELD_DATA_TYPE_SQL = {
     # Options (OPT), mainly similar to Futures
     "option_type": String(20),  # 'C' for Call, 'P' for Put
     "strike": DOUBLE_PRECISION(),
-    "exercise_style": String(20),  # 'A' for American, 'E' for European
+    "exercise_type": String(20),  # 'A' for American, 'E' for European
 }
 
 DATE_TIME_COLS = {

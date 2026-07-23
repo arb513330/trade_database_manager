@@ -88,7 +88,7 @@ Below table shows the columns in the type-specific tables (besides the symbol | 
     |---------------------|--------------------|-------------------------------------------| 
     | strike              | float              | Option strike                             | 
     | option_type         | Enum[OptionType]   | Option type                               | 
-    | exercise_style      | Enum[ExerciseType] | Exercise style                            | 
+    | exercise_type       | Enum[ExerciseType] | Exercise style                            | 
     | contract_unit       | str                | Contract unit                             | 
     | contract_multipler  | float              | Multiplier per lot                        | 
     | expiry_time         | datetime           | Contract expirations                      |
