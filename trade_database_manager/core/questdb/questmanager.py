@@ -123,13 +123,33 @@ class QuestManager:
         wal: bool = True,
         dedup_keys: list[str] = None,
         symbol_columns: list[str] = None,
-    ):
+        indexed_columns: list[str] = None,
+    ) -> None:
+        """
+        Create a new table in QuestDB with specified columns and options.
+
+        :param table_name: Name of the table to create.
+        :param columns: List of tuples (column_name, python_type) defining the table schema.
+        :param designated_timestamp: Name of the timestamp column (default: "timestamp").
+        :param partition_by: Partitioning strategy (default: "DAY").
+        :param wal: Enable Write-Ahead Logging (default: True).
+        :param dedup_keys: List of columns for deduplication (default: None).
+        :param symbol_columns: List of columns to treat as symbols (default: None).
+        :param indexed_columns: List of columns to index (default: None).
+        """
+        if indexed_columns is None:
+            indexed_columns = set()
+        else:
+            indexed_columns = set(indexed_columns)
         col_defs = []
         symbol_set = set(symbol_columns or [])
         for name, py_type in columns:
             is_sym = name in symbol_set
             qdb_type = infer_questdb_type(py_type, is_symbol=is_sym)
-            col_defs.append(f"    {name} {qdb_type}")
+            col_def = f"    {name} {qdb_type}"
+            if name in indexed_columns:
+                col_def += " INDEX"
+            col_defs.append(col_def)
 
         storage = f"TIMESTAMP({designated_timestamp}) PARTITION BY {partition_by}"
         if wal:
