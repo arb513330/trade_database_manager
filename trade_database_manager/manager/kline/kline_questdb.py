@@ -28,27 +28,29 @@ class KLineManager:
     def _table_name(inst_type: str, interval: Interval) -> str:
         return f"{inst_type}_{interval.name}"
 
-    def create_table(self, inst_type: str, interval: Interval):
+    def create_table(self, inst_type: str, interval: Interval, additional_fields: list[tuple[str, type]] = ()):
         partition = self._infer_partition(interval)
+        columns = [
+            ("timestamp", pd.Timestamp),
+            ("full_symbol", str),
+            ("open", float),
+            ("high", float),
+            ("low", float),
+            ("close", float),
+            ("volume", float),
+            ("money", float),
+            ("open_interest", float),
+            ("vwap", float),
+        ] + list(additional_fields)
         self.qm.create_table(
             table_name=self._table_name(inst_type, interval),
-            columns=[
-                ("timestamp", pd.Timestamp),
-                ("full_symbol", str),
-                ("open", float),
-                ("high", float),
-                ("low", float),
-                ("close", float),
-                ("volume", float),
-                ("money", float),
-                ("open_interest", float),
-                ("vwap", float),
-            ],
+            columns=columns,
             designated_timestamp="timestamp",
             partition_by=partition,
             wal=True,
             dedup_keys=["timestamp", "full_symbol"],
             symbol_columns=["full_symbol"],
+            indexed_columns=["full_symbol"],
         )
 
     def upsert(self, inst_type: str, interval: Interval, df: pd.DataFrame):
@@ -122,6 +124,6 @@ class KLineManager:
             timestamp_column="timestamp",
             filter_fields=filter_fields,
         )
-        if not result.empty and "timestamp" in result.columns and "full_symbol" in result.columns:
+        if "timestamp" in result.columns and "full_symbol" in result.columns:
             result = result.set_index("full_symbol").rename(columns={"timestamp": "latest_timestamp"})
         return result
