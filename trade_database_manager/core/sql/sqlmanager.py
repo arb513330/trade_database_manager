@@ -34,6 +34,9 @@ from ..typedefs import FILTERFIELD_TYPE, QUERYFIELD_TYPE
 from .utils import infer_sql_type
 
 
+_MAX_SQL_PARAMS = 65534  # psycopg hard limit is 65535; leave 1 for safety
+
+
 def _insert_on_conflict_update(table, conn, keys, data_iter, indexes):
     data = [dict(zip(keys, row, strict=False)) for row in data_iter]
     stmt = insert(table.table).values(data)
@@ -76,6 +79,38 @@ class SqlManager:
             sql_executable = text(sql_executable)
         with self.engine.begin() as conn:
             return conn.execute(sql_executable)
+
+    @staticmethod
+    def _build_conditions_across_tables(tables, filter_fields):
+        """Build WHERE conditions for cross-table queries.
+
+        Returns a list of SQLAlchemy BinaryExpression suitable for and_().
+        """
+        conditions = []
+        for table_name, field_dict in filter_fields.items():
+            table = tables[table_name]
+            for field, values in field_dict.items():
+                if isinstance(values, Container) and not isinstance(values, str | bytes):
+                    conditions.append(table.columns[field].in_(values))
+                else:
+                    conditions.append(table.columns[field] == values)
+        return conditions
+
+
+    @staticmethod
+    def _build_conditions(table, filter_fields):
+        """Build WHERE conditions from filter_fields dict.
+
+        Returns a list of SQLAlchemy BinaryExpression suitable for and_().
+        """
+        conditions = []
+        for field, filter_values in filter_fields.items():
+            if isinstance(filter_values, Container) and not isinstance(filter_values, str | bytes):
+                conditions.append(table.columns[field].in_(filter_values))
+            else:
+                conditions.append(table.columns[field] == filter_values)
+        return conditions
+
 
     def add_index(self, table_name: str, columns: str | list[str], unique: bool = True):
         """
@@ -278,27 +313,24 @@ class SqlManager:
         else:
             query_fields = table
 
-        stmt = select(*query_fields)
+        if not filter_fields:
+            filter_fields = {}
 
-        conditions = []
-        if start_time:
-            conditions.append(getattr(table.c, time_column, table.c.end_time) >= start_time)
-        if end_time:
-            conditions.append(getattr(table.c, time_column, table.c.start_time) <= end_time)
-        if filter_fields:
-            conditions.extend(
-                [
-                    (
-                        table.columns[field].in_(filter_values)
-                        if isinstance(filter_values, Container) and not isinstance(filter_values, str | bytes)
-                        else table.columns[field] == filter_values
-                    )
-                    for field, filter_values in filter_fields.items()
-                ]
-            )
-        stmt = stmt.where(and_(*conditions))
-        res = self._execute(stmt)
-        return pd.DataFrame(res.fetchall(), columns=res.keys())
+        def stmt_builder(stmt):
+            time_conditions = []
+            if start_time:
+                time_conditions.append(
+                    getattr(table.c, time_column, table.c.end_time) >= start_time
+                )
+            if end_time:
+                time_conditions.append(
+                    getattr(table.c, time_column, table.c.start_time) <= end_time
+                )
+            if time_conditions:
+                stmt = stmt.where(and_(*time_conditions))
+            return stmt
+
+        return self._read_data_batched(table, query_fields, filter_fields, stmt_builder)
 
     def read_data(self, table_name: str, query_fields: QUERYFIELD_TYPE = "*", filter_fields=None, unique=False):
         """
@@ -313,34 +345,143 @@ class SqlManager:
         :return: A DataFrame containing the queried data.
         :rtype: pd.DataFrame
         """
-
         meta = MetaData()
         table = Table(table_name, meta, autoload_with=self.engine)
 
         if query_fields != "*":
             query_fields = [table.columns[field] for field in query_fields]
-            stmt = select(*query_fields)
         else:
             query_fields = table
-            stmt = select(table)
 
-        if unique:
-            stmt = stmt.distinct()
+        def stmt_builder(stmt):
+            if unique:
+                stmt = stmt.distinct()
+            return stmt
 
-        if filter_fields:
-            conditions = [
-                (
-                    table.columns[field].in_(filter_values)
-                    if isinstance(filter_values, Container) and not isinstance(filter_values, str | bytes)
-                    else table.columns[field] == filter_values
-                )
-                for field, filter_values in filter_fields.items()
-            ]
-            stmt = stmt.where(and_(*conditions))
+        return self._read_data_batched(table, query_fields, filter_fields, stmt_builder)
 
-        # cannot use pandas.read_sql here as it discards timezone info
-        res = self._execute(stmt)
-        return pd.DataFrame(res.fetchall(), columns=res.keys())
+    def _read_data_batched(self, table, query_fields, filter_fields, stmt_builder):
+        """
+        Execute a read query with automatic batching of large IN-clause values.
+
+        :param table: SQLAlchemy Table object
+        :param query_fields: list of Column objects (already resolved) or Table (for '*')
+        :param filter_fields: dict of field_name -> values for filtering
+        :param stmt_builder: callable (base_stmt) -> stmt. Applies additional
+            clauses (DISTINCT, time range, etc.) on top of the filter conditions.
+        :return: pd.DataFrame
+        """
+        def _make_stmt(conditions=None):
+            if isinstance(query_fields, Table):
+                stmt = select(query_fields)
+            else:
+                stmt = select(*query_fields)
+            if conditions:
+                stmt = stmt.where(and_(*conditions))
+            return stmt_builder(stmt)
+
+        if not filter_fields:
+            stmt = _make_stmt()
+            res = self._execute(stmt)
+            return pd.DataFrame(res.fetchall(), columns=res.keys())
+
+        # Split IN-list values into batches so each batch stays under _MAX_SQL_PARAMS
+        # total parameters (accounting for all IN clauses simultaneously).
+        in_fields = {}
+        scalar_fields = {}
+        for field, values in filter_fields.items():
+            if isinstance(values, Container) and not isinstance(values, str | bytes):
+                in_fields[field] = values
+            else:
+                scalar_fields[field] = values
+
+        if not in_fields:
+            # No IN lists at all — single query
+            stmt = _make_stmt()
+            res = self._execute(stmt)
+            return pd.DataFrame(res.fetchall(), columns=res.keys())
+
+        # Sort by descending length so we chunk the longest lists first
+        sorted_fields = sorted(in_fields.items(), key=lambda kv: len(kv[1]), reverse=True)
+
+        # Compute total params per record: each IN-list field adds 1 param, scalar fields add 0
+        # The batch size is bounded by _MAX_SQL_PARAMS across all IN lists
+        num_in_fields = len(sorted_fields)
+        # How many values can we take from each IN list per batch so that
+        # sum(batch_sizes) <= _MAX_SQL_PARAMS
+        # A safe per-field batch size when all fields need equal shares
+        per_field_limit = max(1, _MAX_SQL_PARAMS // max(1, num_in_fields))
+
+        # Build batches: slice all IN-lists concurrently until all are consumed
+        field_values = {field: list(values) for field, values in in_fields.items()}
+        field_lengths = {field: len(vals) for field, vals in field_values.items()}
+        max_field_len = max(field_lengths.values())
+
+        frames = []
+        offset = 0
+        while offset < max_field_len:
+            chunk_filter_fields = dict(scalar_fields)
+            for field in field_values:
+                vals = field_values[field]
+                chunk_filter_fields[field] = vals[offset : offset + per_field_limit]
+            conditions = self._build_conditions(table, chunk_filter_fields)
+            stmt = _make_stmt(conditions)
+            res = self._execute(stmt)
+            frames.append(pd.DataFrame(res.fetchall(), columns=res.keys()))
+            offset += per_field_limit
+
+        return pd.concat(frames, ignore_index=True)
+
+    def _read_data_across_tables_batched(self, tables, query_fields_rel, filter_fields, stmt_builder):
+        """Execute a cross-table read query with automatic batching of large IN-clause values."""
+        if not filter_fields:
+            stmt = select(*query_fields_rel)
+            stmt = stmt_builder(stmt)
+            res = self._execute(stmt)
+            return pd.DataFrame(res.fetchall(), columns=res.keys())
+
+        # Build flat index of all IN-list fields across all tables
+        # Each entry: (table_name, field, values)
+        in_entries = {}  # key: (table_name, field) -> values
+        scalar_entries = {}  # key: (table_name, field) -> value
+        for table_name, field_dict in filter_fields.items():
+            for field, values in field_dict.items():
+                if isinstance(values, Container) and not isinstance(values, str | bytes):
+                    in_entries[(table_name, field)] = list(values)
+                else:
+                    scalar_entries[(table_name, field)] = values
+
+        if not in_entries:
+            stmt = select(*query_fields_rel)
+            stmt = stmt_builder(stmt)
+            res = self._execute(stmt)
+            return pd.DataFrame(res.fetchall(), columns=res.keys())
+
+        # Compute safe per-field batch size to stay under _MAX_SQL_PARAMS total
+        num_in_fields = len(in_entries)
+        per_field_limit = max(1, _MAX_SQL_PARAMS // max(1, num_in_fields))
+
+        max_field_len = max(len(vals) for vals in in_entries.values())
+
+        frames = []
+        offset = 0
+        while offset < max_field_len:
+            chunk_filter_fields = {}
+            for (tbl, fld), val in scalar_entries.items():
+                chunk_filter_fields.setdefault(tbl, {})[fld] = val
+            for (tbl, fld), vals in in_entries.items():
+                chunk_filter_fields.setdefault(tbl, {})[fld] = vals[offset : offset + per_field_limit]
+            stmt = select(*query_fields_rel)
+            stmt = stmt_builder(stmt)
+            conditions = self._build_conditions_across_tables(tables, chunk_filter_fields)
+            if conditions:
+                stmt = stmt.where(and_(*conditions))
+            res = self._execute(stmt)
+            frames.append(pd.DataFrame(res.fetchall(), columns=res.keys()))
+            offset += per_field_limit
+
+        return pd.concat(frames, ignore_index=True)
+
 
     def read_data_across_tables(
         self,
@@ -382,27 +523,12 @@ class SqlManager:
         else:
             query_fields_rel = [text("*")]
 
-        stmt = select(*query_fields_rel).select_from(joined_table)
+        def stmt_builder(stmt):
+            if unique:
+                stmt = stmt.distinct()
+            return stmt.select_from(joined_table)
 
-        if unique:
-            stmt = stmt.distinct()
-
-        if filter_fields:
-            conditions = []
-            for table_name, colnames in filter_fields.items():
-                table = tables[table_name]
-                for field, filter_values in colnames.items():
-                    conditions.append(
-                        table.columns[field].in_(filter_values)
-                        if isinstance(filter_values, Container) and not isinstance(filter_values, str | bytes)
-                        else table.columns[field] == filter_values
-                    )
-
-            stmt = stmt.where(and_(*conditions))
-
-        # cannot use pandas.read_sql here as it discards timezone info
-        res = self._execute(stmt)
-        return pd.DataFrame(res.fetchall(), columns=res.keys())
+        return self._read_data_across_tables_batched(tables, query_fields_rel, filter_fields, stmt_builder)
 
     def _read_extremum_in_group(
         self,
