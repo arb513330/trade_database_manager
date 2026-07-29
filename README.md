@@ -30,7 +30,7 @@ host    all            tradedbadmin     ::/0                    scram-sha-256
 
 ### MetaData Initialization
 
-Allowed instruments types are given in "Instrument Types" section of [meta_enumerations.md](doc/data_organization/meta_enumerations.md).
+Allowed instruments types are given in "Instrument Types" section of [meta_enumerations.md](docs/data_organization/meta_enumerations.md).
 
 ### Data Initialization for Instrument Type(s)
 ```python
