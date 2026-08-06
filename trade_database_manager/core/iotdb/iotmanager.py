@@ -62,7 +62,10 @@ class IoTManager:
         self._username = CONFIG.get("iotdb_user", "root")
         self._password = CONFIG.get("iotdb_password", "root")
         self._database = CONFIG.get("iotdb_database", "tradedata")
-        self._time_zone = CONFIG.get("iotdb_time_zone", "Asia/Shanghai")
+        # Canonical UTC session: timestamps are rendered/interpreted as UTC
+        # instants. Callers pass `timezone=` per read to display in a specific
+        # zone (e.g. a symbol's native exchange timezone from the metadata DB).
+        self._time_zone = "UTC"
 
         self._session: TableSession | None = None
 

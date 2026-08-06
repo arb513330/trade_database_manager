@@ -186,10 +186,11 @@ the assumptions in the original design sections:
   the server rejects an outer `SELECT ... FROM (window-subquery)`.
 - **Group extrema** must use a CTE form (`WITH c AS (SELECT ..., ROW_NUMBER() OVER(...) AS rn ...) SELECT ... FROM c WHERE rn=1`).
 - **Timestamps**: read methods accept a `timezone=` parameter and return
-  **timezone-aware** timestamps — converted to the session timezone (Asia/Shanghai)
-  by default, or to any zone via `timezone=`. Writes **require** timezone-aware
-  timestamps: `insert` raises `ValueError` on naive input. IoTDB stores epoch ms
-  (an instant); bare SQL literals are rendered in the session timezone.
+  **timezone-aware** timestamps — UTC (canonical instant) by default, or any zone
+  via `timezone=` (e.g. a symbol's native exchange timezone from the PostgreSQL
+  metadata DB). Writes **require** timezone-aware timestamps: `insert` raises
+  `ValueError` on naive input. IoTDB stores epoch ms (an instant); the session
+  timezone is UTC and bare SQL literals are rendered/interpreted in UTC.
 - **Inner joins** require qualified columns (`SELECT t0.*, t1.* FROM ... t0 INNER JOIN ... t1 ON ...`);
   bare `SELECT *` is ambiguous.
 - **`ALTER TABLE ... RENAME COLUMN` is unsupported** by the server — `rename_column`

@@ -74,11 +74,12 @@ def translate_agg_func(func: str) -> str:
     return mapped
 
 
-def format_time_literal(ts, timezone: str = "Asia/Shanghai") -> str:
+def format_time_literal(ts, timezone: str = "UTC") -> str:
     """Format a datetime-like as an IoTDB bare timestamp literal (unquoted).
 
-    IoTDB interprets bare literals in the session timezone, so tz-aware inputs
-    are first converted to ``timezone`` (naive inputs are assumed already in it).
+    IoTDB interprets bare literals in the session timezone (UTC by default), so
+    tz-aware inputs are first converted to ``timezone`` (naive inputs are
+    assumed already in it).
     """
     t = pd.Timestamp(ts)
     if t.tzinfo is not None:
