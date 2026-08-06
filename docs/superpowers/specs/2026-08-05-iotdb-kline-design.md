@@ -172,8 +172,24 @@ Near-clone of `kline_questdb.py`:
    no duplicates.
 4. Confirm tiered storage is server-side only (no client code); note server-side config steps.
 
-## Out of Scope
+## Verified Server Behavior (2026-08-06, live 192.168.1.29:6667)
 
-- No changes to `kline_questdb.py` / `QuestManager` (existing backend stays intact).
-- No tree-model support.
-- No automated test suite (project convention: ad-hoc `debug_test/` scripts).
+Round-trip testing confirmed the following server-specific behaviors, which override
+the assumptions in the original design sections:
+
+- **Aggregate functions** use standard SQL names (`FIRST`, `LAST`, `MIN`, `MAX`, `SUM`,
+  `AVG`, `COUNT`) — the tree-model `*_VALUE` names are NOT valid in the table model.
+- **Time bucketing** is `date_bin(interval, ts) AS ts ... GROUP BY 1`; `GROUP BY TIME(...)`
+  is not supported (`Unknown function: time`).
+- **Latest-per-partition** (`latest_on`) must use a `MAX(ts)` join
+  (`SELECT a.* FROM t a INNER JOIN (SELECT part, MAX(ts) AS m FROM t WHERE ... GROUP BY part) b ON a.part=b.part AND a.ts=b.m`) —
+  the server rejects an outer `SELECT ... FROM (window-subquery)`.
+- **Group extrema** must use a CTE form (`WITH c AS (SELECT ..., ROW_NUMBER() OVER(...) AS rn ...) SELECT ... FROM c WHERE rn=1`).
+- **Timestamps** are returned session-timezone-aware (e.g. `+08:00`); `IoTManager`
+  strips the tz for QuestDB parity (naive).
+- **Inner joins** require qualified columns (`SELECT t0.*, t1.* FROM ... t0 INNER JOIN ... t1 ON ...`);
+  bare `SELECT *` is ambiguous.
+- **`ALTER TABLE ... RENAME COLUMN` is unsupported** by the server — `rename_column`
+  raises `NotImplementedError`. `ADD`/`DROP COLUMN` work.
+- `debug_test/test_kline_iotdb.py` is the round-trip verification (needs real
+  credentials; not committed, per the project's `debug_test/*` local exclude).
