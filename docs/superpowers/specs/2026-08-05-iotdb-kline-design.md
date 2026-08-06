@@ -185,8 +185,11 @@ the assumptions in the original design sections:
   (`SELECT a.* FROM t a INNER JOIN (SELECT part, MAX(ts) AS m FROM t WHERE ... GROUP BY part) b ON a.part=b.part AND a.ts=b.m`) —
   the server rejects an outer `SELECT ... FROM (window-subquery)`.
 - **Group extrema** must use a CTE form (`WITH c AS (SELECT ..., ROW_NUMBER() OVER(...) AS rn ...) SELECT ... FROM c WHERE rn=1`).
-- **Timestamps** are returned session-timezone-aware (e.g. `+08:00`); `IoTManager`
-  strips the tz for QuestDB parity (naive).
+- **Timestamps**: read methods accept a `timezone=` parameter and return
+  **timezone-aware** timestamps — converted to the session timezone (Asia/Shanghai)
+  by default, or to any zone via `timezone=`. Writes **require** timezone-aware
+  timestamps: `insert` raises `ValueError` on naive input. IoTDB stores epoch ms
+  (an instant); bare SQL literals are rendered in the session timezone.
 - **Inner joins** require qualified columns (`SELECT t0.*, t1.* FROM ... t0 INNER JOIN ... t1 ON ...`);
   bare `SELECT *` is ambiguous.
 - **`ALTER TABLE ... RENAME COLUMN` is unsupported** by the server — `rename_column`
