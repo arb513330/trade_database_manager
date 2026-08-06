@@ -8,12 +8,14 @@ from datetime import date, datetime
 import numpy as np
 import pandas as pd
 
-# QuestDB-style aggregate names -> IoTDB table-model aggregate functions
+# QuestDB-style aggregate names -> IoTDB table-model aggregate functions.
+# The table model uses standard SQL aggregate names (FIRST/LAST/MIN/MAX/SUM/
+# AVG/COUNT) — NOT the tree-model *_VALUE names.
 AGG_FUNC_MAP = {
-    "first": "FIRST_VALUE",
-    "last": "LAST_VALUE",
-    "min": "MIN_VALUE",
-    "max": "MAX_VALUE",
+    "first": "FIRST",
+    "last": "LAST",
+    "min": "MIN",
+    "max": "MAX",
     "sum": "SUM",
     "avg": "AVG",
     "mean": "AVG",

@@ -89,10 +89,24 @@ class IoTManager:
         def run() -> pd.DataFrame:
             ds = self._session.execute_query_statement(sql)
             try:
-                return ds.todf()
+                return self._normalize_tz(ds.todf())
             finally:
                 ds.close_operation_handle()
         return self._with_reconnect(run)
+
+    @staticmethod
+    def _normalize_tz(df: pd.DataFrame) -> pd.DataFrame:
+        """Strip timezone info from returned timestamp columns.
+
+        QuestDB returns naive timestamps; IoTDB returns session-timezone-aware
+        ones (e.g. +08:00). Stripping keeps the IoTManager a drop-in.
+        Iterates positionally so duplicate column names (joins) are handled.
+        """
+        for i in range(df.shape[1]):
+            ser = df.iloc[:, i]
+            if len(ser) and isinstance(ser.iloc[0], pd.Timestamp) and ser.iloc[0].tzinfo is not None:
+                df.isetitem(i, pd.to_datetime(ser).dt.tz_localize(None))
+        return df
 
     # ---------------------------------------------------------------- helpers
 
@@ -267,9 +281,12 @@ class IoTManager:
     def delete_column(self, table_name: str, column_name: str):
         self._execute_sql(f"ALTER TABLE {self._q(table_name)} DROP COLUMN {column_name}")
 
-    def rename_column(self, table_name: str, old_name: str, new_name: str):  # [VERIFY-ON-SERVER]
-        self._execute_sql(
-            f"ALTER TABLE {self._q(table_name)} RENAME COLUMN {old_name} TO {new_name}"
+    def rename_column(self, table_name: str, old_name: str, new_name: str):
+        # Verified against the live server: the table model does not support
+        # ALTER TABLE ... RENAME COLUMN ("renaming for base table column is
+        # currently unsupported"). Fail clearly instead of a raw server error.
+        raise NotImplementedError(
+            "IoTDB table model does not support renaming columns"
         )
 
     # ------------------------------------------------------------------- write
@@ -349,7 +366,13 @@ class IoTManager:
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
         if sample_by:
-            sql += f" GROUP BY TIME({sample_by})"  # [VERIFY-ON-SERVER]
+            # No aggregations are known here, so time-bucketing is not possible
+            # on the table model; use sample_by() for explicit aggregations.
+            import warnings
+
+            warnings.warn(
+                "sample_by in read_range_data is not supported on IoTDB; use sample_by() instead"
+            )
         return self._execute_query(sql)
 
     def read_data_across_tables(
@@ -366,18 +389,6 @@ class IoTManager:
             raise ValueError(f"Unsupported join_type: {join_type}")
 
         t0, t1 = table_names[0], table_names[1]
-        if query_fields == "*":
-            select_clause = "*"
-        elif isinstance(query_fields, dict):
-            parts = []
-            for tn, cols in query_fields.items():
-                if isinstance(cols, str):
-                    parts.append(f"{tn}.{cols}")
-                else:
-                    parts.extend(f"{tn}.{c}" for c in cols)
-            select_clause = ", ".join(parts)
-        else:
-            select_clause = "*"
 
         def table_where(tn: str) -> str:
             w = self._build_where((filter_fields or {}).get(tn))
@@ -413,10 +424,26 @@ class IoTManager:
                 **kwargs,
             )
 
-        join_cond = " AND ".join(f"{t0}.{c} = {t1}.{c}" for c in join_columns)
+        # Inner join: bare SELECT * is ambiguous when both tables share column
+        # names on this server, so alias both tables and qualify the columns.
+        if query_fields == "*":
+            select_clause = "t0.*, t1.*"
+        elif isinstance(query_fields, dict):
+            parts = []
+            for tn, cols in query_fields.items():
+                alias = "t0" if tn == t0 else ("t1" if tn == t1 else tn)
+                if isinstance(cols, str):
+                    parts.append(f"{alias}.{cols}")
+                else:
+                    parts.extend(f"{alias}.{c}" for c in cols)
+            select_clause = ", ".join(parts)
+        else:
+            select_clause = "t0.*, t1.*"
+
+        join_cond = " AND ".join(f"t0.{c} = t1.{c}" for c in join_columns)
         sql = (
-            f"SELECT {select_clause} FROM {self._q(t0)} "
-            f"INNER JOIN {self._q(t1)} ON {join_cond}"  # [VERIFY-ON-SERVER]
+            f"SELECT {select_clause} FROM {self._q(t0)} t0 "
+            f"INNER JOIN {self._q(t1)} t1 ON {join_cond}"
         )
         conditions = []
         for tn in table_names:
@@ -466,13 +493,15 @@ class IoTManager:
         col_list = ", ".join(all_cols)
         where = self._build_where(filter_fields)
         where_clause = f" WHERE {where}" if where else ""
+        # CTE form: this server rejects an outer SELECT over a derived table
+        # containing a window function, but accepts the equivalent CTE.
         sql = (
-            f"SELECT {col_list} FROM ("
+            f"WITH c AS ("
             f"  SELECT {col_list}, "
             f"    ROW_NUMBER() OVER (PARTITION BY {', '.join(gcols)} "
             f"      ORDER BY {extremum_column} {order}) AS rn"
             f"  FROM {self._q(table_name)}{where_clause}"
-            f") WHERE rn = 1"  # [VERIFY-ON-SERVER]
+            f") SELECT {col_list} FROM c WHERE rn = 1"
         )
         return self._execute_query(sql)
 
@@ -487,19 +516,31 @@ class IoTManager:
         align_to_calendar: bool = True,
     ) -> pd.DataFrame:
         ts_col = timestamp_column or "timestamp"
-        if aggregations:
-            agg_exprs = [
-                f"{translate_agg_func(func)}({col}) AS {col}"
-                for col, func in aggregations.items()
-            ]
-            select_clause = f"{ts_col}, " + ", ".join(agg_exprs)
-        else:
-            select_clause = "*"
+        if not aggregations:
+            # Can't GROUP BY without knowing which columns to aggregate.
+            import warnings
+
+            warnings.warn(
+                "sample_by without aggregations is not supported on IoTDB; "
+                "returning ungrouped rows"
+            )
+            sql = f"SELECT * FROM {self._q(table_name)}"
+            where = self._build_where(filter_fields)
+            if where:
+                sql += f" WHERE {where}"
+            return self._execute_query(sql)
+
+        agg_exprs = [
+            f"{translate_agg_func(func)}({col}) AS {col}"
+            for col, func in aggregations.items()
+        ]
+        # Table-model time bucketing: date_bin(...) AS time + GROUP BY 1.
+        select_clause = f"date_bin({interval}, {ts_col}) AS {ts_col}, " + ", ".join(agg_exprs)
         sql = f"SELECT {select_clause} FROM {self._q(table_name)}"
         where = self._build_where(filter_fields)
         if where:
             sql += f" WHERE {where}"
-        sql += f" GROUP BY TIME({interval})"  # [VERIFY-ON-SERVER]
+        sql += " GROUP BY 1"
         if fill:
             # QuestDB FILL(...) has no guaranteed table-model equivalent across
             # versions. Round 1: explicit no-op (unfilled buckets), not silent.
@@ -518,8 +559,18 @@ class IoTManager:
         search_start=None,
     ) -> pd.DataFrame:
         ts_col = timestamp_column or "timestamp"
-        fields = "*" if query_fields == "*" else ", ".join(query_fields)
-        partition = ", ".join(partition_by) if isinstance(partition_by, list) else partition_by
+        partition_cols = partition_by if isinstance(partition_by, list) else [partition_by]
+        partition_sql = ", ".join(partition_cols)
+
+        # The server rejects an outer SELECT over a window-function derived
+        # table, so latest-per-partition is computed via a MAX(timestamp) join
+        # (a.* needs no schema knowledge; verified against the live server).
+        if query_fields == "*":
+            select_clause = "a.*"
+        else:
+            cols = [query_fields] if isinstance(query_fields, str) else list(query_fields)
+            select_clause = ", ".join(f"a.{c}" for c in cols)
+
         conditions = []
         if search_start is not None:
             conditions.append(f"{ts_col} >= {format_time_literal(search_start)}")
@@ -527,14 +578,14 @@ class IoTManager:
         if filter_where:
             conditions.append(filter_where)
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        join_cond = " AND ".join(f"a.{c} = b.{c}" for c in partition_cols)
         sql = (
-            f"SELECT {fields} FROM ("
-            f"  SELECT {fields}, ROW_NUMBER() OVER (PARTITION BY {partition} "
-            f"    ORDER BY {ts_col} DESC) AS rn"
+            f"SELECT {select_clause} FROM {self._q(table_name)} a"
+            f" INNER JOIN ("
+            f"  SELECT {partition_sql}, MAX({ts_col}) AS __max_ts"
             f"  FROM {self._q(table_name)}{where_clause}"
-            f") WHERE rn = 1"  # [VERIFY-ON-SERVER]
+            f"  GROUP BY {partition_sql}"
+            f" ) b ON {join_cond} AND a.{ts_col} = b.__max_ts"
         )
-        df = self._execute_query(sql)
-        if "rn" in df.columns:
-            df = df.drop(columns=["rn"])
-        return df
+        return self._execute_query(sql)
