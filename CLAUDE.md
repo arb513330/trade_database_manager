@@ -29,6 +29,9 @@ Three-layer design:
    - `core/sql/sqlmanager.py` — `SqlManager`: SQLAlchemy-based CRUD, table management, JOIN-based cross-table reads, group-wise extremum queries. Uses `psycopg2` driver with PostgreSQL `ON CONFLICT DO UPDATE` for upserts. Instantiated per-use (not a singleton).
    - `core/kdb/kdbmanager.py` — `KdbManager`: pykx-based Kdb+ connector for splayed/partitioned table reads and writes. Singleton pattern via `instance()` classmethod.
    - `core/typedefs.py` — Shared type aliases (`QUERYFIELD_TYPE`, `FILTERFIELD_TYPE`).
+   - `core/iotdb/iotmanager.py` — `IoTManager`: Apache IoTDB (table model) connector via the
+     apache-iotdb SDK. Full-parity counterpart to `QuestManager`; one persistent `TableSession`,
+     database-qualified tables (e.g. `tradedata.FUT_1m`), `NumpyTablet` bulk inserts.
 
 3. **`manager/`** — Domain-specific business logic built on `core/`:
    - `manager/metadata_sql.py` — `MetadataSql` (singleton via `__new__`): Manages the `instruments` table (common metadata) and per-type tables `instruments_{type}`. Handles initialize, upsert, and read — reading does JOINs between common and type-specific tables. Defines `COMMON_METADATA_COLUMNS` and `TYPE_METADATA_COLUMNS` (per instrument type fields).
@@ -36,6 +39,9 @@ Three-layer design:
    - `manager/metadata_sql_fut.py` — `FutMetadataSql(MetadataSql)`: Futures extensions (dominant contracts, underlying codes).
    - `manager/fields_data_type.py` — Central SQL column type definitions (`FIELD_DATA_TYPE_SQL` dict mapping field names to SQLAlchemy types). All table creation uses this registry.
    - `manager/typedefs.py` — Domain type aliases: `INST_TYPE_LITERALS` (STK, FUT, OPT, IDX, ETF, LOF, FUND, BOND, CASH, CRYPTO, CB) and `EXCHANGE_LITERALS` (40+ global exchanges).
+   - `manager/kline/kline_iotdb.py` — `KLineManager`: K-line management on IoTDB, counterpart to
+     `kline_questdb.py` with per-instrument-type columns (`FUT`/`OPT` add `open_interest` and
+     `settlement`).
 
 ## Key Patterns
 
