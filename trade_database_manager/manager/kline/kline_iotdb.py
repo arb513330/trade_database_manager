@@ -3,6 +3,8 @@
 # @File    : kline_iotdb.py
 # @Purpose : K-line data management on Apache IoTDB
 
+from collections.abc import Sequence
+
 import pandas as pd
 
 from ..typedefs import Interval
@@ -56,7 +58,7 @@ class KLineManager:
         self,
         inst_type: str,
         interval: Interval,
-        additional_fields: list[tuple[str, type]] = (),
+        additional_fields: Sequence[tuple[str, type]] = (),
     ):
         columns = self._base_columns(inst_type) + list(additional_fields)
         self.qm.create_table(
@@ -144,6 +146,6 @@ class KLineManager:
             filter_fields=filter_fields,
             search_start=search_start,
         )
-        if "timestamp" in result.columns and "full_symbol" in result.columns:
+        if not result.empty and "timestamp" in result.columns and "full_symbol" in result.columns:
             result = result.set_index("full_symbol").rename(columns={"timestamp": "latest_timestamp"})
         return result

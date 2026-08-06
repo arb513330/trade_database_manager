@@ -21,6 +21,7 @@ AGG_FUNC_MAP = {
     "mean": "AVG",
     "count": "COUNT",
 }
+_KNOWN_AGG_VALUES = frozenset(AGG_FUNC_MAP.values())
 
 
 def infer_iotdb_type(py_type) -> str:
@@ -65,7 +66,7 @@ def to_iotdb_value(value):
 def translate_agg_func(func: str) -> str:
     """Map a QuestDB-style aggregate name to the IoTDB table-model equivalent."""
     upper = func.strip().upper()
-    if upper in set(AGG_FUNC_MAP.values()):
+    if upper in _KNOWN_AGG_VALUES:
         return upper
     mapped = AGG_FUNC_MAP.get(func.strip().lower())
     if mapped is None:

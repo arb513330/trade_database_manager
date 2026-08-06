@@ -3,6 +3,7 @@
 # @File    : iotmanager.py
 # @Purpose : Manage Apache IoTDB (table model) operations via the apache-iotdb SDK
 
+import re
 from collections.abc import Container, Sequence
 from datetime import datetime
 
@@ -38,6 +39,14 @@ def _column_ts_type(series: pd.Series) -> TSDataType:
     if pd.api.types.is_datetime64_any_dtype(dtype):
         return TSDataType.TIMESTAMP
     return TSDataType.STRING
+
+
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _check_identifier(name: str) -> None:
+    if not _IDENTIFIER_RE.match(name):
+        raise ValueError(f"Unsafe column name: {name!r}")
 
 
 class IoTManager:
@@ -79,6 +88,11 @@ class IoTManager:
         try:
             return fn()
         except (IoTDBConnectionException, OSError):
+            if self._session is not None:
+                try:
+                    self._session.close()
+                except Exception:
+                    pass
             self._connect()
             return fn()
 
@@ -104,33 +118,38 @@ class IoTManager:
         """
         for i in range(df.shape[1]):
             ser = df.iloc[:, i]
-            if len(ser) and isinstance(ser.iloc[0], pd.Timestamp) and ser.iloc[0].tzinfo is not None:
-                df.isetitem(i, pd.to_datetime(ser).dt.tz_localize(None))
+            for v in ser:
+                if isinstance(v, pd.Timestamp):
+                    if v.tzinfo is not None:
+                        df.isetitem(i, pd.to_datetime(ser).dt.tz_localize(None))
+                    break
         return df
 
     # ---------------------------------------------------------------- helpers
 
     @staticmethod
-    def _build_where(filter_fields) -> str:
+    def _build_where(filter_fields, prefix: str | None = None) -> str:
         """Build an AND-joined WHERE condition string from a filter dict."""
         if not filter_fields:
             return ""
+        def q(field):
+            return f"{prefix}.{field}" if prefix else field
         conditions = []
         for field, value in filter_fields.items():
             if isinstance(value, str):
-                conditions.append(f"{field} = '{escape_string(value)}'")
+                conditions.append(f"{q(field)} = '{escape_string(value)}'")
             elif isinstance(value, Container) and not isinstance(value, (str, bytes)):
                 formatted = ", ".join(
                     f"'{escape_string(v)}'" if isinstance(v, str) else str(v)
                     for v in value
                 )
-                conditions.append(f"{field} IN ({formatted})")
+                conditions.append(f"{q(field)} IN ({formatted})")
             elif isinstance(value, (pd.Timestamp, np.datetime64, datetime)):
-                conditions.append(f"{field} = {format_time_literal(value)}")
+                conditions.append(f"{q(field)} = {format_time_literal(value)}")
             elif isinstance(value, (bool, np.bool_)):
-                conditions.append(f"{field} = {'TRUE' if value else 'FALSE'}")
+                conditions.append(f"{q(field)} = {'TRUE' if value else 'FALSE'}")
             else:
-                conditions.append(f"{field} = {value}")
+                conditions.append(f"{q(field)} = {value}")
         return " AND ".join(conditions)
 
     def _build_create_sql(
@@ -142,6 +161,7 @@ class IoTManager:
     ) -> str:
         col_defs = []
         for name, py_type in columns:
+            _check_identifier(name)
             if name == designated_timestamp:
                 col_defs.append(f"    {name} TIMESTAMP TIME")
             elif name in tag_set:
@@ -155,6 +175,8 @@ class IoTManager:
 
     def _build_insert_sql(self, table_name: str, df: pd.DataFrame, designated_timestamp: str) -> str:
         cols = list(df.columns)
+        for c in cols:
+            _check_identifier(c)
         col_list = ", ".join(cols)
         rows = []
         for row in df.itertuples(index=False):
@@ -210,12 +232,15 @@ class IoTManager:
                             arr[i] = 0.0
                     values.append(arr)
                 elif t == TSDataType.INT64:
-                    arr = ser.to_numpy(dtype="float64").copy()
-                    for i in range(len(arr)):
-                        if np.isnan(arr[i]):
-                            bm.mark(i)
-                            arr[i] = 0.0
-                    values.append(arr.astype("int64"))
+                    if ser.isna().any():
+                        arr = ser.to_numpy(dtype="float64").copy()
+                        for i in range(len(arr)):
+                            if np.isnan(arr[i]):
+                                bm.mark(i)
+                                arr[i] = 0.0
+                        values.append(arr.astype("int64"))
+                    else:
+                        values.append(ser.to_numpy(dtype="int64"))
                 elif t == TSDataType.TIMESTAMP:
                     ser_t = pd.to_datetime(ser)
                     arr = ser_t.values.astype("int64") // 10**6
@@ -248,7 +273,7 @@ class IoTManager:
 
     def table_exists(self, table_name: str) -> bool:
         try:
-            self._execute_query(f"DESCRIBE {self._q(table_name)}")  # [VERIFY-ON-SERVER]
+            self._execute_query(f"DESCRIBE {self._q(table_name)}")
             return True
         except Exception:
             return False
@@ -308,7 +333,7 @@ class IoTManager:
         return self._insert_sql(table_name, df, designated_timestamp)
 
     def _insert_sql(self, table_name: str, df: pd.DataFrame, designated_timestamp: str) -> int:
-        self._execute_sql(self._build_insert_sql(table_name, df, designated_timestamp))  # [VERIFY-ON-SERVER]
+        self._execute_sql(self._build_insert_sql(table_name, df, designated_timestamp))
         return len(df)
 
     def _insert_tablet(
@@ -447,7 +472,8 @@ class IoTManager:
         )
         conditions = []
         for tn in table_names:
-            w = self._build_where((filter_fields or {}).get(tn))
+            alias = "t0" if tn == t0 else ("t1" if tn == t1 else tn)
+            w = self._build_where((filter_fields or {}).get(tn), prefix=alias)
             if w:
                 conditions.append(w)
         if conditions:
@@ -547,6 +573,8 @@ class IoTManager:
             import warnings
 
             warnings.warn("sample_by(fill=...) is not yet supported; returning unfilled buckets")
+        if not align_to_calendar:
+            warnings.warn("sample_by(align_to_calendar=False) has no IoTDB equivalent; ignoring")
         return self._execute_query(sql)
 
     def latest_on(
