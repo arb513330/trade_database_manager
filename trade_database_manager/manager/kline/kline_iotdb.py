@@ -103,6 +103,7 @@ class KLineManager:
         start_time=None,
         end_time=None,
         columns: list[str] = None,
+        timezone: str | None = None,
     ) -> pd.DataFrame:
         table = self._table_name(inst_type, interval)
         filter_fields = {"full_symbol": symbols} if symbols else None
@@ -118,6 +119,7 @@ class KLineManager:
             end_time=end_time,
             time_column="timestamp",
             filter_fields=filter_fields,
+            timezone=timezone,
         )
         if not result.empty and "timestamp" in result.columns and "full_symbol" in result.columns:
             result = result.set_index(["timestamp", "full_symbol"])
@@ -130,6 +132,7 @@ class KLineManager:
         symbols: list[str] = None,
         columns: list[str] = None,
         search_start=None,
+        timezone: str | None = None,
     ) -> pd.DataFrame:
         table = self._table_name(inst_type, interval)
         filter_fields = {"full_symbol": symbols} if symbols else None
@@ -145,6 +148,7 @@ class KLineManager:
             timestamp_column="timestamp",
             filter_fields=filter_fields,
             search_start=search_start,
+            timezone=timezone,
         )
         if not result.empty and "timestamp" in result.columns and "full_symbol" in result.columns:
             result = result.set_index("full_symbol").rename(columns={"timestamp": "latest_timestamp"})

@@ -62,6 +62,7 @@ class IoTManager:
         self._username = CONFIG.get("iotdb_user", "root")
         self._password = CONFIG.get("iotdb_password", "root")
         self._database = CONFIG.get("iotdb_database", "tradedata")
+        self._time_zone = CONFIG.get("iotdb_time_zone", "Asia/Shanghai")
 
         self._session: TableSession | None = None
 
@@ -76,6 +77,7 @@ class IoTManager:
             username=self._username,
             password=self._password,
             database=self._database,
+            time_zone=self._time_zone,
         )
         self._session = TableSession(cfg)
 
@@ -99,41 +101,42 @@ class IoTManager:
     def _execute_sql(self, sql: str) -> None:
         self._with_reconnect(lambda: self._session.execute_non_query_statement(sql))
 
-    def _execute_query(self, sql: str) -> pd.DataFrame:
+    def _execute_query(self, sql: str, timezone: str | None = None) -> pd.DataFrame:
         def run() -> pd.DataFrame:
             ds = self._session.execute_query_statement(sql)
             try:
-                return self._normalize_tz(ds.todf())
+                return self._convert_tz(ds.todf(), timezone)
             finally:
                 ds.close_operation_handle()
         return self._with_reconnect(run)
 
-    @staticmethod
-    def _normalize_tz(df: pd.DataFrame) -> pd.DataFrame:
-        """Strip timezone info from returned timestamp columns.
+    def _convert_tz(self, df: pd.DataFrame, timezone: str | None = None) -> pd.DataFrame:
+        """Convert returned timestamp columns to ``timezone`` (tz-aware output).
 
-        QuestDB returns naive timestamps; IoTDB returns session-timezone-aware
-        ones (e.g. +08:00). Stripping keeps the IoTManager a drop-in.
+        IoTDB returns timestamps already tz-aware in the session timezone; the
+        read API returns them tz-aware in ``timezone`` (default: session tz).
         Iterates positionally so duplicate column names (joins) are handled.
         """
+        target = timezone or self._time_zone
         for i in range(df.shape[1]):
             ser = df.iloc[:, i]
             for v in ser:
                 if isinstance(v, pd.Timestamp):
                     if v.tzinfo is not None:
-                        df.isetitem(i, pd.to_datetime(ser).dt.tz_localize(None))
+                        df.isetitem(i, pd.to_datetime(ser).dt.tz_convert(target))
                     break
         return df
 
     # ---------------------------------------------------------------- helpers
 
-    @staticmethod
-    def _build_where(filter_fields, prefix: str | None = None) -> str:
+    def _build_where(self, filter_fields, prefix: str | None = None) -> str:
         """Build an AND-joined WHERE condition string from a filter dict."""
         if not filter_fields:
             return ""
+
         def q(field):
             return f"{prefix}.{field}" if prefix else field
+
         conditions = []
         for field, value in filter_fields.items():
             if isinstance(value, str):
@@ -145,7 +148,7 @@ class IoTManager:
                 )
                 conditions.append(f"{q(field)} IN ({formatted})")
             elif isinstance(value, (pd.Timestamp, np.datetime64, datetime)):
-                conditions.append(f"{q(field)} = {format_time_literal(value)}")
+                conditions.append(f"{q(field)} = {format_time_literal(value, self._time_zone)}")
             elif isinstance(value, (bool, np.bool_)):
                 conditions.append(f"{q(field)} = {'TRUE' if value else 'FALSE'}")
             else:
@@ -188,7 +191,7 @@ class IoTManager:
                 elif isinstance(v, str):
                     vals.append(f"'{escape_string(v)}'")
                 elif isinstance(v, datetime):
-                    vals.append(format_time_literal(v))
+                    vals.append(format_time_literal(v, self._time_zone))
                 elif isinstance(v, bool):
                     vals.append("TRUE" if v else "FALSE")
                 else:
@@ -316,6 +319,41 @@ class IoTManager:
 
     # ------------------------------------------------------------------- write
 
+    def _check_tz_aware(self, df: pd.DataFrame, designated_timestamp: str) -> None:
+        """Require the designated timestamp column to be timezone-aware.
+
+        Naive timestamps are ambiguous about their zone; IoTDB stores an instant
+        (epoch ms), so callers must supply tz-aware pd.Timestamp / datetime.
+        """
+        if designated_timestamp not in df.columns:
+            raise ValueError(
+                f"designated_timestamp column {designated_timestamp!r} not in DataFrame columns"
+            )
+        col = df[designated_timestamp]
+        if col.dtype.kind == "M":  # datetime64, incl. tz-aware
+            if getattr(col.dtype, "tz", None) is not None:
+                return  # tz-aware datetime64[tz]
+            raise ValueError(
+                f"DataFrame {designated_timestamp!r} must be timezone-aware; "
+                "use tz-aware pd.Timestamp / datetime (e.g. tz='Asia/Shanghai')"
+            )
+        if col.dtype == object:
+            for v in col:
+                if pd.isna(v):
+                    continue
+                if isinstance(v, pd.Timestamp) and v.tzinfo is not None:
+                    continue
+                if isinstance(v, datetime) and v.tzinfo is not None:
+                    continue
+                raise ValueError(
+                    f"DataFrame {designated_timestamp!r} must contain only timezone-aware "
+                    "pd.Timestamp / datetime values"
+                )
+            return
+        raise ValueError(
+            f"DataFrame {designated_timestamp!r} must be a datetime-like, timezone-aware column"
+        )
+
     def insert(
         self,
         table_name: str,
@@ -326,6 +364,7 @@ class IoTManager:
     ) -> int:
         if df is None or df.empty:
             return 0
+        self._check_tz_aware(df, designated_timestamp)
         if use_ilp is None:
             use_ilp = len(df) > 1000
         if use_ilp:
@@ -359,13 +398,14 @@ class IoTManager:
         query_fields="*",
         filter_fields=None,
         unique: bool = False,
+        timezone: str | None = None,
     ) -> pd.DataFrame:
         fields = "*" if query_fields == "*" else ", ".join(query_fields)
         sql = f"SELECT {'DISTINCT ' if unique else ''}{fields} FROM {self._q(table_name)}"
         where = self._build_where(filter_fields)
         if where:
             sql += f" WHERE {where}"
-        return self._execute_query(sql)
+        return self._execute_query(sql, timezone=timezone)
 
     def read_range_data(
         self,
@@ -376,15 +416,16 @@ class IoTManager:
         time_column: str = None,
         filter_fields=None,
         sample_by: str = None,
+        timezone: str | None = None,
     ) -> pd.DataFrame:
         ts_col = time_column or "timestamp"
         fields = "*" if query_fields == "*" else ", ".join(query_fields)
         sql = f"SELECT {fields} FROM {self._q(table_name)}"
         conditions = []
         if start_time is not None:
-            conditions.append(f"{ts_col} >= {format_time_literal(start_time)}")
+            conditions.append(f"{ts_col} >= {format_time_literal(start_time, self._time_zone)}")
         if end_time is not None:
-            conditions.append(f"{ts_col} <= {format_time_literal(end_time)}")
+            conditions.append(f"{ts_col} <= {format_time_literal(end_time, self._time_zone)}")
         filter_where = self._build_where(filter_fields)
         if filter_where:
             conditions.append(filter_where)
@@ -398,7 +439,7 @@ class IoTManager:
             warnings.warn(
                 "sample_by in read_range_data is not supported on IoTDB; use sample_by() instead"
             )
-        return self._execute_query(sql)
+        return self._execute_query(sql, timezone=timezone)
 
     def read_data_across_tables(
         self,
@@ -407,6 +448,7 @@ class IoTManager:
         query_fields="*",
         filter_fields=None,
         join_type: str = "inner",
+        timezone: str | None = None,
     ) -> pd.DataFrame:
         if len(table_names) < 2:
             raise ValueError("At least 2 table names are required")
@@ -435,8 +477,8 @@ class IoTManager:
                 need = [c for c in join_columns if c not in cols]
                 return ", ".join(cols + need) if (cols or need) else "*"
 
-            df0 = self._execute_query(f"SELECT {asof_select(t0)} FROM {self._q(t0)}{table_where(t0)}")
-            df1 = self._execute_query(f"SELECT {asof_select(t1)} FROM {self._q(t1)}{table_where(t1)}")
+            df0 = self._execute_query(f"SELECT {asof_select(t0)} FROM {self._q(t0)}{table_where(t0)}", timezone=timezone)
+            df1 = self._execute_query(f"SELECT {asof_select(t1)} FROM {self._q(t1)}{table_where(t1)}", timezone=timezone)
             asof_col = join_columns[-1]
             by_cols = list(join_columns[:-1])
             kwargs: dict = {"direction": "backward"}
@@ -478,7 +520,7 @@ class IoTManager:
                 conditions.append(w)
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
-        return self._execute_query(sql)
+        return self._execute_query(sql, timezone=timezone)
 
     def read_max_in_group(
         self,
@@ -487,9 +529,10 @@ class IoTManager:
         group_column,
         extremum_column: str,
         filter_fields=None,
+        timezone: str | None = None,
     ) -> pd.DataFrame:
         return self._read_extremum_in_group(
-            table_name, target_column, group_column, extremum_column, "DESC", filter_fields
+            table_name, target_column, group_column, extremum_column, "DESC", filter_fields, timezone
         )
 
     def read_min_in_group(
@@ -499,9 +542,10 @@ class IoTManager:
         group_column,
         extremum_column: str,
         filter_fields=None,
+        timezone: str | None = None,
     ) -> pd.DataFrame:
         return self._read_extremum_in_group(
-            table_name, target_column, group_column, extremum_column, "ASC", filter_fields
+            table_name, target_column, group_column, extremum_column, "ASC", filter_fields, timezone
         )
 
     def _read_extremum_in_group(
@@ -512,6 +556,7 @@ class IoTManager:
         extremum_column: str,
         order: str,
         filter_fields=None,
+        timezone: str | None = None,
     ) -> pd.DataFrame:
         tcols = [target_column] if isinstance(target_column, str) else target_column
         gcols = [group_column] if isinstance(group_column, str) else group_column
@@ -529,7 +574,7 @@ class IoTManager:
             f"  FROM {self._q(table_name)}{where_clause}"
             f") SELECT {col_list} FROM c WHERE rn = 1"
         )
-        return self._execute_query(sql)
+        return self._execute_query(sql, timezone=timezone)
 
     def sample_by(
         self,
@@ -540,6 +585,7 @@ class IoTManager:
         filter_fields=None,
         fill: str = None,
         align_to_calendar: bool = True,
+        timezone: str | None = None,
     ) -> pd.DataFrame:
         ts_col = timestamp_column or "timestamp"
         if not aggregations:
@@ -554,7 +600,7 @@ class IoTManager:
             where = self._build_where(filter_fields)
             if where:
                 sql += f" WHERE {where}"
-            return self._execute_query(sql)
+            return self._execute_query(sql, timezone=timezone)
 
         agg_exprs = [
             f"{translate_agg_func(func)}({col}) AS {col}"
@@ -575,7 +621,7 @@ class IoTManager:
             warnings.warn("sample_by(fill=...) is not yet supported; returning unfilled buckets")
         if not align_to_calendar:
             warnings.warn("sample_by(align_to_calendar=False) has no IoTDB equivalent; ignoring")
-        return self._execute_query(sql)
+        return self._execute_query(sql, timezone=timezone)
 
     def latest_on(
         self,
@@ -585,6 +631,7 @@ class IoTManager:
         filter_fields=None,
         query_fields="*",
         search_start=None,
+        timezone: str | None = None,
     ) -> pd.DataFrame:
         ts_col = timestamp_column or "timestamp"
         partition_cols = partition_by if isinstance(partition_by, list) else [partition_by]
@@ -601,7 +648,7 @@ class IoTManager:
 
         conditions = []
         if search_start is not None:
-            conditions.append(f"{ts_col} >= {format_time_literal(search_start)}")
+            conditions.append(f"{ts_col} >= {format_time_literal(search_start, self._time_zone)}")
         filter_where = self._build_where(filter_fields)
         if filter_where:
             conditions.append(filter_where)
@@ -616,4 +663,4 @@ class IoTManager:
             f"  GROUP BY {partition_sql}"
             f" ) b ON {join_cond} AND a.{ts_col} = b.__max_ts"
         )
-        return self._execute_query(sql)
+        return self._execute_query(sql, timezone=timezone)
