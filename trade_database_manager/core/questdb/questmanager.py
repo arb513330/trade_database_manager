@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import psycopg
-from questdb.ingress import Sender, IngressError
+from questdb import Sender, SenderError
 
 from ...config import CONFIG
 from .utils import infer_questdb_type
@@ -216,7 +216,7 @@ class QuestManager:
                     sender.row(table_name, symbols=row_symbols, columns=row_columns, at=ts)
                     n_rows += 1
                 sender.flush()
-        except IngressError as exc:
+        except SenderError as exc:
             raise RuntimeError(f"ILP insert failed for {table_name} ({n_rows} of {len(df)} rows sent)") from exc
         return n_rows
 
