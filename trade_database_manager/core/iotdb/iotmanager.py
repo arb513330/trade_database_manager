@@ -203,8 +203,8 @@ class IoTManager:
             rows.append("(" + ", ".join(vals) + ")")
         return f"INSERT INTO {self._q(table_name)} ({col_list}) VALUES " + ", ".join(rows)
 
+    @staticmethod
     def _build_tablets(
-        self,
         table_name: str,
         df: pd.DataFrame,
         designated_timestamp: str,
@@ -213,7 +213,7 @@ class IoTManager:
         """Chunk df by symbol and build one NumpyTablet per group (table model allows
         mixed tags in one tablet, but per-symbol chunks keep memory bounded)."""
         fields = [c for c in df.columns if c != designated_timestamp and c not in symbols]
-        target = self._q(table_name)
+        target = table_name
         tablets = []
         for _, grp in df.groupby(symbols) if symbols else [("__all__", df)]:
             timestamps = pd.to_datetime(grp[designated_timestamp]).values.astype("int64") // 10**6
