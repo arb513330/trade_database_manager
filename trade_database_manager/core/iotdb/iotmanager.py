@@ -4,6 +4,7 @@
 # @Purpose : Manage Apache IoTDB (table model) operations via the apache-iotdb SDK
 
 import re
+import warnings
 from collections.abc import Container, Sequence
 from datetime import datetime
 
@@ -321,8 +322,8 @@ class IoTManager:
         )
 
     # ------------------------------------------------------------------- write
-
-    def _check_tz_aware(self, df: pd.DataFrame, designated_timestamp: str) -> None:
+    @staticmethod
+    def _check_tz_aware(df: pd.DataFrame, designated_timestamp: str) -> None:
         """Require the designated timestamp column to be timezone-aware.
 
         Naive timestamps are ambiguous about their zone; IoTDB stores an instant
@@ -437,8 +438,6 @@ class IoTManager:
         if sample_by:
             # No aggregations are known here, so time-bucketing is not possible
             # on the table model; use sample_by() for explicit aggregations.
-            import warnings
-
             warnings.warn(
                 "sample_by in read_range_data is not supported on IoTDB; use sample_by() instead"
             )
@@ -448,7 +447,7 @@ class IoTManager:
         self,
         table_names: Sequence[str],
         join_columns: Sequence[str],
-        query_fields="*",
+        query_fields: str | dict | list = "*",
         filter_fields=None,
         join_type: str = "inner",
         timezone: str | None = None,
@@ -593,8 +592,6 @@ class IoTManager:
         ts_col = timestamp_column or "timestamp"
         if not aggregations:
             # Can't GROUP BY without knowing which columns to aggregate.
-            import warnings
-
             warnings.warn(
                 "sample_by without aggregations is not supported on IoTDB; "
                 "returning ungrouped rows"
@@ -619,8 +616,6 @@ class IoTManager:
         if fill:
             # QuestDB FILL(...) has no guaranteed table-model equivalent across
             # versions. Round 1: explicit no-op (unfilled buckets), not silent.
-            import warnings
-
             warnings.warn("sample_by(fill=...) is not yet supported; returning unfilled buckets")
         if not align_to_calendar:
             warnings.warn("sample_by(align_to_calendar=False) has no IoTDB equivalent; ignoring")
