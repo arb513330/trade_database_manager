@@ -23,7 +23,7 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 
-dependencies = ["pandas>=2.0.0", "numpy", "ruamel.yaml", "sqlalchemy", "psycopg>=3.1", "questdb"]
+dependencies = ["pandas>=2.0.0", "numpy", "ruamel.yaml", "sqlalchemy", "psycopg>=3.1", "apache-iotdb>=2.0.10"]
 
 [project.optional-dependencies]
 dev = [
