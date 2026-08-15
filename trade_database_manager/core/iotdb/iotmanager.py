@@ -63,6 +63,12 @@ class IoTManager:
         self._username = CONFIG.get("iotdb_user", "root")
         self._password = CONFIG.get("iotdb_password", "root")
         self._database = CONFIG.get("iotdb_database", "tradedata")
+        self._query_timeout_ms = int(CONFIG.get("iotdb_query_timeout_ms", 0) or 0)
+        self._latest_timeout_ms = int(
+            CONFIG.get("iotdb_latest_timeout_ms", 0)
+            or CONFIG.get("iotdb_query_timeout_ms", 0)
+            or 180_000
+        )
         # Canonical UTC session: timestamps are rendered/interpreted as UTC
         # instants. Callers pass `timezone=` per read to display in a specific
         # zone (e.g. a symbol's native exchange timezone from the metadata DB).
@@ -105,9 +111,17 @@ class IoTManager:
     def _execute_sql(self, sql: str) -> None:
         self._with_reconnect(lambda: self._session.execute_non_query_statement(sql))
 
-    def _execute_query(self, sql: str, timezone: str | None = None) -> pd.DataFrame:
+    def _execute_query(
+        self,
+        sql: str,
+        timezone: str | None = None,
+        timeout_in_ms: int | None = None,
+    ) -> pd.DataFrame:
+        if timeout_in_ms is None:
+            timeout_in_ms = self._query_timeout_ms
+
         def run() -> pd.DataFrame:
-            ds = self._session.execute_query_statement(sql)
+            ds = self._session.execute_query_statement(sql, timeout_in_ms)
             try:
                 return self._convert_tz(ds.todf(), timezone)
             finally:
@@ -634,15 +648,33 @@ class IoTManager:
         ts_col = timestamp_column or "timestamp"
         partition_cols = partition_by if isinstance(partition_by, list) else [partition_by]
         partition_sql = ", ".join(partition_cols)
+        partition_set = set(partition_cols)
 
-        # The server rejects an outer SELECT over a window-function derived
-        # table, so latest-per-partition is computed via a MAX(timestamp) join
-        # (a.* needs no schema knowledge; verified against the live server).
         if query_fields == "*":
-            select_clause = "a.*"
+            desc = self._execute_query(f"DESCRIBE {self._q(table_name)}")
+            column_name_col = next(
+                c for c in desc.columns if c.lower() == "columnname"
+            )
+            requested_cols = desc[column_name_col].astype(str).tolist()
         else:
-            cols = [query_fields] if isinstance(query_fields, str) else list(query_fields)
-            select_clause = ", ".join(f"a.{c}" for c in cols)
+            requested_cols = [query_fields] if isinstance(query_fields, str) else list(query_fields)
+
+        # Native latest-per-partition. last_by(field, timestamp) returns the
+        # value from the row carrying the newest timestamp, unlike last(field),
+        # which returns the newest non-null value.
+        select_parts = []
+        seen = set()
+        for col in requested_cols:
+            if col in seen:
+                continue
+            seen.add(col)
+            if col == ts_col:
+                select_parts.append(f"last({ts_col}) AS {ts_col}")
+            elif col in partition_set:
+                select_parts.append(col)
+            else:
+                select_parts.append(f"last_by({col}, {ts_col}) AS {col}")
+        select_clause = ", ".join(select_parts)
 
         conditions = []
         if search_start is not None:
@@ -652,13 +684,12 @@ class IoTManager:
             conditions.append(filter_where)
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
 
-        join_cond = " AND ".join(f"a.{c} = b.{c}" for c in partition_cols)
         sql = (
-            f"SELECT {select_clause} FROM {self._q(table_name)} a"
-            f" INNER JOIN ("
-            f"  SELECT {partition_sql}, MAX({ts_col}) AS __max_ts"
-            f"  FROM {self._q(table_name)}{where_clause}"
-            f"  GROUP BY {partition_sql}"
-            f" ) b ON {join_cond} AND a.{ts_col} = b.__max_ts"
+            f"SELECT {select_clause} FROM {self._q(table_name)}"
+            f"{where_clause} GROUP BY {partition_sql}"
         )
-        return self._execute_query(sql, timezone=timezone)
+        return self._execute_query(
+            sql,
+            timezone=timezone,
+            timeout_in_ms=self._latest_timeout_ms,
+        )
