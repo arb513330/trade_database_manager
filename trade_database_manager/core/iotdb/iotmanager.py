@@ -230,7 +230,7 @@ class IoTManager:
         target = table_name
         tablets = []
         for _, grp in df.groupby(symbols) if symbols else [("__all__", df)]:
-            timestamps = pd.to_datetime(grp[designated_timestamp]).values.astype("int64") // 10**6
+            timestamps = pd.to_datetime(grp[designated_timestamp]).values.astype('datetime64[ms]').astype("int64")
             column_names = symbols + fields
             data_types: list = []
             values: list = []
@@ -264,7 +264,7 @@ class IoTManager:
                         values.append(ser.to_numpy(dtype="int64"))
                 elif t == TSDataType.TIMESTAMP:
                     ser_t = pd.to_datetime(ser)
-                    arr = ser_t.values.astype("int64") // 10**6
+                    arr = ser_t.values.astype('datetime64[ms]').astype("int64")
                     for i, v in enumerate(ser_t):
                         if pd.isna(v):
                             bm.mark(i)
