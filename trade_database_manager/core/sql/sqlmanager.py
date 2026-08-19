@@ -421,8 +421,7 @@ class SqlManager:
         offset = 0
         while offset < max_field_len:
             chunk_filter_fields = dict(scalar_fields)
-            for field in field_values:
-                vals = field_values[field]
+            for field, vals in field_values.items():
                 chunk_filter_fields[field] = vals[offset : offset + per_field_limit]
             conditions = self._build_conditions(table, chunk_filter_fields)
             stmt = _make_stmt(conditions)

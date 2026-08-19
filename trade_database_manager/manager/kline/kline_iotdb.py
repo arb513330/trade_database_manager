@@ -25,8 +25,8 @@ KLINE_COMMON_COLUMNS = [
 
 # Extra columns per instrument type.
 KLINE_TYPE_EXTRA_COLUMNS = {
-    "FUT": [("open_interest", float), ("settlement", float)],
-    "OPT": [("open_interest", float), ("settlement", float)],
+    "FUT": [("open_interest", float)],
+    "OPT": [("open_interest", float)],
 }
 
 
@@ -51,8 +51,11 @@ class KLineManager:
         return f"{inst_type}_{interval.name}"
 
     @staticmethod
-    def _base_columns(inst_type: str) -> list[tuple[str, type]]:
-        return KLINE_COMMON_COLUMNS + KLINE_TYPE_EXTRA_COLUMNS.get(inst_type, [])
+    def _base_columns(inst_type: str, interval: Interval) -> list[tuple[str, type]]:
+        base_columns = KLINE_COMMON_COLUMNS + KLINE_TYPE_EXTRA_COLUMNS.get(inst_type, [])
+        if interval == Interval.DAY:
+            base_columns.append(("settlement", float))
+        return base_columns
 
     def create_table(
         self,
@@ -60,7 +63,7 @@ class KLineManager:
         interval: Interval,
         additional_fields: Sequence[tuple[str, type]] = (),
     ):
-        columns = self._base_columns(inst_type) + list(additional_fields)
+        columns = self._base_columns(inst_type, interval) + list(additional_fields)
         self.qm.create_table(
             table_name=self._table_name(inst_type, interval),
             columns=columns,
@@ -78,7 +81,7 @@ class KLineManager:
             "full_symbol",
         }, "DataFrame index must be a MultiIndex with timestamp and full_symbol"
 
-        required = {c for c, _ in self._base_columns(inst_type)} - {"timestamp", "full_symbol"}
+        required = {c for c, _ in self._base_columns(inst_type, interval)} - {"timestamp", "full_symbol"}
         assert set(df.columns) >= required, (
             f"DataFrame must contain all required columns for {inst_type}: {sorted(required)}"
         )

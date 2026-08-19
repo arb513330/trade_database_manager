@@ -203,17 +203,17 @@ class IoTManager:
         for row in df.itertuples(index=False):
             vals = []
             for v in row:
-                v = to_iotdb_value(v)
-                if v is None:
+                v1 = to_iotdb_value(v)
+                if v1 is None:
                     vals.append("NULL")
-                elif isinstance(v, str):
-                    vals.append(f"'{escape_string(v)}'")
-                elif isinstance(v, datetime):
-                    vals.append(format_time_literal(v, self._time_zone))
-                elif isinstance(v, bool):
-                    vals.append("TRUE" if v else "FALSE")
+                elif isinstance(v1, str):
+                    vals.append(f"'{escape_string(v1)}'")
+                elif isinstance(v1, datetime):
+                    vals.append(format_time_literal(v1, self._time_zone))
+                elif isinstance(v1, bool):
+                    vals.append("TRUE" if v1 else "FALSE")
                 else:
-                    vals.append(str(v))
+                    vals.append(str(v1))
             rows.append("(" + ", ".join(vals) + ")")
         return f"INSERT INTO {self._q(table_name)} ({col_list}) VALUES " + ", ".join(rows)
 
@@ -453,7 +453,7 @@ class IoTManager:
             # No aggregations are known here, so time-bucketing is not possible
             # on the table model; use sample_by() for explicit aggregations.
             warnings.warn(
-                "sample_by in read_range_data is not supported on IoTDB; use sample_by() instead"
+                "sample_by in read_range_data is not supported on IoTDB; use sample_by() instead", stacklevel=2
             )
         return self._execute_query(sql, timezone=timezone)
 
@@ -608,7 +608,8 @@ class IoTManager:
             # Can't GROUP BY without knowing which columns to aggregate.
             warnings.warn(
                 "sample_by without aggregations is not supported on IoTDB; "
-                "returning ungrouped rows"
+                "returning ungrouped rows",
+                stacklevel=2
             )
             sql = f"SELECT * FROM {self._q(table_name)}"
             where = self._build_where(filter_fields)
@@ -630,9 +631,9 @@ class IoTManager:
         if fill:
             # QuestDB FILL(...) has no guaranteed table-model equivalent across
             # versions. Round 1: explicit no-op (unfilled buckets), not silent.
-            warnings.warn("sample_by(fill=...) is not yet supported; returning unfilled buckets")
+            warnings.warn("sample_by(fill=...) is not yet supported; returning unfilled buckets", stacklevel=2)
         if not align_to_calendar:
-            warnings.warn("sample_by(align_to_calendar=False) has no IoTDB equivalent; ignoring")
+            warnings.warn("sample_by(align_to_calendar=False) has no IoTDB equivalent; ignoring", stacklevel=2)
         return self._execute_query(sql, timezone=timezone)
 
     def latest_on(

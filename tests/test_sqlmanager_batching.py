@@ -45,7 +45,7 @@ class TestReadDataBatched:
             )
 
         with patch.object(mgr, "_execute", side_effect=mock_execute):
-            result = mgr._read_data_batched(table, [table.columns["ticker"]], filter_fields, lambda s: s)
+            mgr._read_data_batched(table, [table.columns["ticker"]], filter_fields, lambda s: s)
 
         assert call_count[0] == 2
 
@@ -66,7 +66,7 @@ class TestReadDataBatched:
 
     def test_read_data_delegates_to_batched(self):
         mgr = object.__new__(SqlManager)
-        with patch("trade_database_manager.core.sql.sqlmanager.Table") as mock_table, \
+        with patch("trade_database_manager.core.sql.sqlmanager.Table") as _mock_table, \
              patch("trade_database_manager.core.sql.sqlmanager.MetaData"):
             with patch.object(mgr, "_read_data_batched") as mock_batched:
                 mock_batched.return_value = pd.DataFrame()
