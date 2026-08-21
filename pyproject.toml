@@ -39,10 +39,10 @@ include = ["trade_database_manager*"]
 [tool.setuptools_scm]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 output-format = "full"
 line-length = 120
-exclude = ["*.ipynb"]
+exclude = ["*.ipynb", "*.md", "docs/*", "tests/*", "examples/*", "build/*", "dist/*", ".venv/*", ".git/*"]
 
 [tool.ruff.lint]
 select = [
