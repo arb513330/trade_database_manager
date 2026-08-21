@@ -96,7 +96,6 @@ class SqlManager:
                     conditions.append(table.columns[field] == values)
         return conditions
 
-
     @staticmethod
     def _build_conditions(table, filter_fields):
         """Build WHERE conditions from filter_fields dict.
@@ -110,7 +109,6 @@ class SqlManager:
             else:
                 conditions.append(table.columns[field] == filter_values)
         return conditions
-
 
     def add_index(self, table_name: str, columns: str | list[str], unique: bool = True):
         """
@@ -319,13 +317,9 @@ class SqlManager:
         def stmt_builder(stmt):
             time_conditions = []
             if start_time:
-                time_conditions.append(
-                    getattr(table.c, time_column, table.c.end_time) >= start_time
-                )
+                time_conditions.append(getattr(table.c, time_column, table.c.end_time) >= start_time)
             if end_time:
-                time_conditions.append(
-                    getattr(table.c, time_column, table.c.start_time) <= end_time
-                )
+                time_conditions.append(getattr(table.c, time_column, table.c.start_time) <= end_time)
             if time_conditions:
                 stmt = stmt.where(and_(*time_conditions))
             return stmt
@@ -371,6 +365,7 @@ class SqlManager:
             clauses (DISTINCT, time range, etc.) on top of the filter conditions.
         :return: pd.DataFrame
         """
+
         def _make_stmt(conditions=None):
             if isinstance(query_fields, Table):
                 stmt = select(query_fields)
@@ -480,7 +475,6 @@ class SqlManager:
             offset += per_field_limit
 
         return pd.concat(frames, ignore_index=True)
-
 
     def read_data_across_tables(
         self,
