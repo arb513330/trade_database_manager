@@ -2,3 +2,7 @@
 # @Author  : YQ Tsui
 # @File    : __init__.py.py
 # @Purpose :
+
+from .iotmanager import IoTManager
+
+__all__ = ["IoTManager"]
