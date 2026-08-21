@@ -39,8 +39,7 @@ Three-layer design:
    - `manager/metadata_sql_fut.py` — `FutMetadataSql(MetadataSql)`: Futures extensions (dominant contracts, underlying codes).
    - `manager/fields_data_type.py` — Central SQL column type definitions (`FIELD_DATA_TYPE_SQL` dict mapping field names to SQLAlchemy types). All table creation uses this registry.
    - `manager/typedefs.py` — Domain type aliases: `INST_TYPE_LITERALS` (STK, FUT, OPT, IDX, ETF, LOF, FUND, BOND, CASH, CRYPTO, CB) and `EXCHANGE_LITERALS` (40+ global exchanges).
-   - `manager/kline/kline_iotdb.py` — `KLineManager`: K-line management on IoTDB, counterpart to
-     `kline_questdb.py` with per-instrument-type columns (`FUT`/`OPT` add `open_interest` and
+   - `manager/kline/kline_iotdb.py` — `KLineManager`: K-line management on IoTDB (`FUT`/`OPT` add `open_interest` and
      `settlement`).
 
 ## Key Patterns
