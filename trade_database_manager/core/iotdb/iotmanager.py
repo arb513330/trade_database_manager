@@ -65,9 +65,7 @@ class IoTManager:
         self._database = CONFIG.get("iotdb_database", "tradedata")
         self._query_timeout_ms = int(CONFIG.get("iotdb_query_timeout_ms", 0) or 0)
         self._latest_timeout_ms = int(
-            CONFIG.get("iotdb_latest_timeout_ms", 0)
-            or CONFIG.get("iotdb_query_timeout_ms", 0)
-            or 180_000
+            CONFIG.get("iotdb_latest_timeout_ms", 0) or CONFIG.get("iotdb_query_timeout_ms", 0) or 180_000
         )
         # Canonical UTC session: timestamps are rendered/interpreted as UTC
         # instants. Callers pass `timezone=` per read to display in a specific
@@ -126,6 +124,7 @@ class IoTManager:
                 return self._convert_tz(ds.todf(), timezone)
             finally:
                 ds.close_operation_handle()
+
         return self._with_reconnect(run)
 
     def _convert_tz(self, df: pd.DataFrame, timezone: str | None = None) -> pd.DataFrame:
@@ -160,10 +159,7 @@ class IoTManager:
             if isinstance(value, str):
                 conditions.append(f"{q(field)} = '{escape_string(value)}'")
             elif isinstance(value, Container) and not isinstance(value, (str, bytes)):
-                formatted = ", ".join(
-                    f"'{escape_string(v)}'" if isinstance(v, str) else str(v)
-                    for v in value
-                )
+                formatted = ", ".join(f"'{escape_string(v)}'" if isinstance(v, str) else str(v) for v in value)
                 conditions.append(f"{q(field)} IN ({formatted})")
             elif isinstance(value, (pd.Timestamp, np.datetime64, datetime)):
                 conditions.append(f"{q(field)} = {format_time_literal(value, self._time_zone)}")
@@ -230,7 +226,7 @@ class IoTManager:
         target = table_name
         tablets = []
         for _, grp in df.groupby(symbols) if symbols else [("__all__", df)]:
-            timestamps = pd.to_datetime(grp[designated_timestamp]).values.astype('datetime64[ms]').astype("int64")
+            timestamps = pd.to_datetime(grp[designated_timestamp]).values.astype("datetime64[ms]").astype("int64")
             column_names = symbols + fields
             data_types: list = []
             values: list = []
@@ -264,7 +260,7 @@ class IoTManager:
                         values.append(ser.to_numpy(dtype="int64"))
                 elif t == TSDataType.TIMESTAMP:
                     ser_t = pd.to_datetime(ser)
-                    arr = ser_t.values.astype('datetime64[ms]').astype("int64")
+                    arr = ser_t.values.astype("datetime64[ms]").astype("int64")
                     for i, v in enumerate(ser_t):
                         if pd.isna(v):
                             bm.mark(i)
@@ -304,25 +300,15 @@ class IoTManager:
         table_name: str,
         columns: list[tuple[str, type]],
         designated_timestamp: str = "timestamp",
-        partition_by: str = "DAY",
-        wal: bool = True,
         dedup_keys: list[str] = None,
         symbol_columns: list[str] = None,
         indexed_columns: list[str] = None,
     ) -> None:
-        # partition_by / wal have no IoTDB table-model equivalent: IoTDB always
-        # WALs and auto-partitions by time + device. Accepted for signature parity.
-        tag_set = (
-            set(symbol_columns or [])
-            | set(indexed_columns or [])
-            | set(dedup_keys or [])
-        )
+        tag_set = set(symbol_columns or []) | set(indexed_columns or []) | set(dedup_keys or [])
         self._execute_sql(self._build_create_sql(table_name, columns, designated_timestamp, tag_set))
 
     def insert_column(self, table_name: str, column_name: str, column_type: str):
-        self._execute_sql(
-            f"ALTER TABLE {self._q(table_name)} ADD COLUMN {column_name} {column_type} FIELD"
-        )
+        self._execute_sql(f"ALTER TABLE {self._q(table_name)} ADD COLUMN {column_name} {column_type} FIELD")
 
     def delete_column(self, table_name: str, column_name: str):
         self._execute_sql(f"ALTER TABLE {self._q(table_name)} DROP COLUMN {column_name}")
@@ -331,9 +317,7 @@ class IoTManager:
         # Verified against the live server: the table model does not support
         # ALTER TABLE ... RENAME COLUMN ("renaming for base table column is
         # currently unsupported"). Fail clearly instead of a raw server error.
-        raise NotImplementedError(
-            "IoTDB table model does not support renaming columns"
-        )
+        raise NotImplementedError("IoTDB table model does not support renaming columns")
 
     # ------------------------------------------------------------------- write
     @staticmethod
@@ -344,9 +328,7 @@ class IoTManager:
         (epoch ms), so callers must supply tz-aware pd.Timestamp / datetime.
         """
         if designated_timestamp not in df.columns:
-            raise ValueError(
-                f"designated_timestamp column {designated_timestamp!r} not in DataFrame columns"
-            )
+            raise ValueError(f"designated_timestamp column {designated_timestamp!r} not in DataFrame columns")
         col = df[designated_timestamp]
         if col.dtype.kind == "M":  # datetime64, incl. tz-aware
             if getattr(col.dtype, "tz", None) is not None:
@@ -368,9 +350,7 @@ class IoTManager:
                     "pd.Timestamp / datetime values"
                 )
             return
-        raise ValueError(
-            f"DataFrame {designated_timestamp!r} must be a datetime-like, timezone-aware column"
-        )
+        raise ValueError(f"DataFrame {designated_timestamp!r} must be a datetime-like, timezone-aware column")
 
     def insert(
         self,
@@ -493,8 +473,12 @@ class IoTManager:
                 need = [c for c in join_columns if c not in cols]
                 return ", ".join(cols + need) if (cols or need) else "*"
 
-            df0 = self._execute_query(f"SELECT {asof_select(t0)} FROM {self._q(t0)}{table_where(t0)}", timezone=timezone)
-            df1 = self._execute_query(f"SELECT {asof_select(t1)} FROM {self._q(t1)}{table_where(t1)}", timezone=timezone)
+            df0 = self._execute_query(
+                f"SELECT {asof_select(t0)} FROM {self._q(t0)}{table_where(t0)}", timezone=timezone
+            )
+            df1 = self._execute_query(
+                f"SELECT {asof_select(t1)} FROM {self._q(t1)}{table_where(t1)}", timezone=timezone
+            )
             asof_col = join_columns[-1]
             by_cols = list(join_columns[:-1])
             kwargs: dict = {"direction": "backward"}
@@ -524,10 +508,7 @@ class IoTManager:
             select_clause = "t0.*, t1.*"
 
         join_cond = " AND ".join(f"t0.{c} = t1.{c}" for c in join_columns)
-        sql = (
-            f"SELECT {select_clause} FROM {self._q(t0)} t0 "
-            f"INNER JOIN {self._q(t1)} t1 ON {join_cond}"
-        )
+        sql = f"SELECT {select_clause} FROM {self._q(t0)} t0 INNER JOIN {self._q(t1)} t1 ON {join_cond}"
         conditions = []
         for tn in table_names:
             alias = "t0" if tn == t0 else ("t1" if tn == t1 else tn)
@@ -607,9 +588,7 @@ class IoTManager:
         if not aggregations:
             # Can't GROUP BY without knowing which columns to aggregate.
             warnings.warn(
-                "sample_by without aggregations is not supported on IoTDB; "
-                "returning ungrouped rows",
-                stacklevel=2
+                "sample_by without aggregations is not supported on IoTDB; returning ungrouped rows", stacklevel=2
             )
             sql = f"SELECT * FROM {self._q(table_name)}"
             where = self._build_where(filter_fields)
@@ -617,10 +596,7 @@ class IoTManager:
                 sql += f" WHERE {where}"
             return self._execute_query(sql, timezone=timezone)
 
-        agg_exprs = [
-            f"{translate_agg_func(func)}({col}) AS {col}"
-            for col, func in aggregations.items()
-        ]
+        agg_exprs = [f"{translate_agg_func(func)}({col}) AS {col}" for col, func in aggregations.items()]
         # Table-model time bucketing: date_bin(...) AS time + GROUP BY 1.
         select_clause = f"date_bin({interval}, {ts_col}) AS {ts_col}, " + ", ".join(agg_exprs)
         sql = f"SELECT {select_clause} FROM {self._q(table_name)}"
@@ -653,9 +629,7 @@ class IoTManager:
 
         if query_fields == "*":
             desc = self._execute_query(f"DESCRIBE {self._q(table_name)}")
-            column_name_col = next(
-                c for c in desc.columns if c.lower() == "columnname"
-            )
+            column_name_col = next(c for c in desc.columns if c.lower() == "columnname")
             requested_cols = desc[column_name_col].astype(str).tolist()
         else:
             requested_cols = [query_fields] if isinstance(query_fields, str) else list(query_fields)
@@ -685,10 +659,7 @@ class IoTManager:
             conditions.append(filter_where)
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
 
-        sql = (
-            f"SELECT {select_clause} FROM {self._q(table_name)}"
-            f"{where_clause} GROUP BY {partition_sql}"
-        )
+        sql = f"SELECT {select_clause} FROM {self._q(table_name)}{where_clause} GROUP BY {partition_sql}"
         return self._execute_query(
             sql,
             timezone=timezone,

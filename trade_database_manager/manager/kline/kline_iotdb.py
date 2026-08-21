@@ -8,7 +8,7 @@ from collections.abc import Sequence
 import pandas as pd
 
 from ..typedefs import Interval
-from ...core.iotdb.iotmanager import IoTManager
+from ..interval_base import IntervalTimeSeriesManager
 
 # Common to all instrument types.
 KLINE_COMMON_COLUMNS = [
@@ -36,11 +36,21 @@ class KLineManager:
     Table format: ``{inst_type}_{interval}`` inside the configured IoTDB database,
     e.g. ``tradedata.FUT_1m``, ``tradedata.STK_1d``.
 
-    :ivar IoTManager qm: The underlying IoTDB connection manager.
+    This is a singleton class. Just call ``KLineManager()`` to get the instance.
     """
 
-    def __init__(self):
-        self.qm = IoTManager()
+    _instance = None
+    _core = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(KLineManager, cls).__new__(cls)
+            cls._core = IntervalTimeSeriesManager()
+        return cls._instance
+
+    @property
+    def qm(self):
+        return self._core.qm
 
     @staticmethod
     def _infer_partition(interval: Interval) -> str:
@@ -64,23 +74,9 @@ class KLineManager:
         additional_fields: Sequence[tuple[str, type]] = (),
     ):
         columns = self._base_columns(inst_type, interval) + list(additional_fields)
-        self.qm.create_table(
-            table_name=self._table_name(inst_type, interval),
-            columns=columns,
-            designated_timestamp="timestamp",
-            partition_by=self._infer_partition(interval),
-            wal=True,
-            dedup_keys=["timestamp", "full_symbol"],
-            symbol_columns=["full_symbol"],
-            indexed_columns=["full_symbol"],
-        )
+        self._core.create_table(self._table_name(inst_type, interval), fields=columns)
 
     def upsert(self, inst_type: str, interval: Interval, df: pd.DataFrame):
-        assert isinstance(df.index, pd.MultiIndex) and set(df.index.names) == {
-            "timestamp",
-            "full_symbol",
-        }, "DataFrame index must be a MultiIndex with timestamp and full_symbol"
-
         required = {c for c, _ in self._base_columns(inst_type, interval)} - {"timestamp", "full_symbol"}
         assert set(df.columns) >= required, (
             f"DataFrame must contain all required columns for {inst_type}: {sorted(required)}"
@@ -90,13 +86,7 @@ class KLineManager:
         if not self.qm.table_exists(table):
             self.create_table(inst_type, interval)
 
-        df_flat = df.reset_index()
-        self.qm.insert(
-            table,
-            df_flat,
-            designated_timestamp="timestamp",
-            symbol_columns=["full_symbol"],
-        )
+        self._core.upsert(table, df)
 
     def read_range(
         self,
@@ -108,25 +98,15 @@ class KLineManager:
         columns: list[str] = None,
         timezone: str | None = None,
     ) -> pd.DataFrame:
-        table = self._table_name(inst_type, interval)
-        filter_fields = {"full_symbol": symbols} if symbols else None
-        if columns is not None:
-            seen = {"timestamp", "full_symbol"}
-            query_fields = ["timestamp", "full_symbol"] + [c for c in columns if c not in seen]
-        else:
-            query_fields = "*"
-        result = self.qm.read_range_data(
-            table,
-            query_fields=query_fields,
+        table_name: str = self._table_name(inst_type, interval)
+        return self._core.read_range(
+            table_name,
             start_time=start_time,
             end_time=end_time,
-            time_column="timestamp",
-            filter_fields=filter_fields,
+            symbols=symbols,
+            columns=columns,
             timezone=timezone,
         )
-        if not result.empty and "timestamp" in result.columns and "full_symbol" in result.columns:
-            result = result.set_index(["timestamp", "full_symbol"])
-        return result
 
     def read_newest(
         self,
@@ -137,22 +117,11 @@ class KLineManager:
         search_start=None,
         timezone: str | None = None,
     ) -> pd.DataFrame:
-        table = self._table_name(inst_type, interval)
-        filter_fields = {"full_symbol": symbols} if symbols else None
-        if columns is not None:
-            seen = {"timestamp", "full_symbol"}
-            query_fields = ["timestamp", "full_symbol"] + [c for c in columns if c not in seen]
-        else:
-            query_fields = "*"
-        result = self.qm.latest_on(
-            table,
-            query_fields=query_fields,
-            partition_by="full_symbol",
-            timestamp_column="timestamp",
-            filter_fields=filter_fields,
+        table_name: str = self._table_name(inst_type, interval)
+        return self._core.read_newest(
+            table_name,
+            symbols=symbols,
+            columns=columns,
             search_start=search_start,
             timezone=timezone,
         )
-        if not result.empty and "timestamp" in result.columns and "full_symbol" in result.columns:
-            result = result.set_index("full_symbol").rename(columns={"timestamp": "latest_timestamp"})
-        return result
