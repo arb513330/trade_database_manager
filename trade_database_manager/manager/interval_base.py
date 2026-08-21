@@ -36,7 +36,8 @@ class IntervalTimeSeriesManager:
         table_name: str,
         fields: Sequence[tuple[str, type]],
     ):
-        columns = list(fields)
+        key_cols = [("timestamp", pd.Timestamp), ("full_symbol", str)]
+        columns = key_cols + [f for f in fields if f[0] not in {"timestamp", "full_symbol"}]
         self.qm.create_table(
             table_name=table_name,
             columns=columns,
