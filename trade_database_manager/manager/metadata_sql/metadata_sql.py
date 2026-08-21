@@ -128,18 +128,6 @@ class MetadataSql:
         else:
             assert set(data.index.names) == {"ticker", "exchange"}, "Index names must be 'ticker' and 'exchange'."
 
-        # if "FUT" in data["inst_type"].unique():
-        #     columns = data.columns.intersection(COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS["FUT"])
-        #     data_fut = data.loc[data["inst_type"] == "FUT", columns]
-        #     self._manager.insert("instruments_fut", data_fut, upsert=True)
-        #     data.drop(index=data[data["inst_type"] == "FUT"].index, inplace=True)
-        #
-        # if "OPT" in data["inst_type"].unique():
-        #     columns = data.columns.intersection(COMMON_METADATA_COLUMNS + TYPE_METADATA_COLUMNS["OPT"])
-        #     data_opt = data.loc[data["inst_type"] == "OPT", columns]
-        #     self._manager.insert("instruments_opt", data_opt, upsert=True)
-        #     data.drop(index=data[data["inst_type"] == "OPT"].index, inplace=True)
-
         data_common = data[data.columns.intersection(COMMON_METADATA_COLUMNS)]
 
         self._manager.insert("instruments", data_common, upsert=True)
