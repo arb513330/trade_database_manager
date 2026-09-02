@@ -202,6 +202,8 @@ class IoTManager:
                 v1 = to_iotdb_value(v)
                 if v1 is None:
                     vals.append("NULL")
+                elif pd.isna(v1):
+                    vals.append("NaN")
                 elif isinstance(v1, str):
                     vals.append(f"'{escape_string(v1)}'")
                 elif isinstance(v1, datetime):
