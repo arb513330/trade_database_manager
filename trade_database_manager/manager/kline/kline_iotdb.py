@@ -63,8 +63,6 @@ class KLineManager:
     @staticmethod
     def _base_columns(inst_type: str, interval: Interval) -> list[tuple[str, type]]:
         base_columns = KLINE_COMMON_COLUMNS + KLINE_TYPE_EXTRA_COLUMNS.get(inst_type, [])
-        if interval == Interval.DAY:
-            base_columns.append(("settlement", float))
         return base_columns
 
     def create_table(
