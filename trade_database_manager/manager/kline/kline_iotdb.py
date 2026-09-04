@@ -76,6 +76,10 @@ class KLineManager:
         columns = self._base_columns(inst_type, interval) + list(additional_fields)
         self._core.create_table(self._table_name(inst_type, interval), fields=columns)
 
+    def table_exists(self, inst_type: str, interval: Interval) -> bool:
+        """Return whether the kline table for ``inst_type`` and ``interval`` exists."""
+        return self.qm.table_exists(self._table_name(inst_type, interval))
+
     def upsert(self, inst_type: str, interval: Interval, df: pd.DataFrame):
         required = {c for c, _ in self._base_columns(inst_type, interval)} - {"timestamp", "full_symbol"}
         assert set(df.columns) >= required, (
@@ -83,7 +87,7 @@ class KLineManager:
         )
 
         table = self._table_name(inst_type, interval)
-        if not self.qm.table_exists(table):
+        if not self.table_exists(inst_type, interval):
             self.create_table(inst_type, interval)
 
         self._core.upsert(table, df)

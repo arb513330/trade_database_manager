@@ -16,7 +16,7 @@ from iotdb.utils.BitMap import BitMap
 from iotdb.utils.IoTDBConstants import TSDataType
 from iotdb.utils.NumpyTablet import NumpyTablet
 from iotdb.utils.Tablet import ColumnType
-from iotdb.utils.exception import IoTDBConnectionException
+from iotdb.utils.exception import IoTDBConnectionException, StatementExecutionException
 
 from ...config import CONFIG
 from .utils import (
@@ -291,11 +291,14 @@ class IoTManager:
     # ------------------------------------------------------------------ schema
 
     def table_exists(self, table_name: str) -> bool:
+        """Return whether ``table_name`` exists in the configured database."""
+        _check_identifier(table_name)
         try:
             self._execute_query(f"DESCRIBE {self._q(table_name)}")
-            return True
-        except Exception:
+        except StatementExecutionException:
             return False
+        else:
+            return True
 
     def create_table(
         self,
