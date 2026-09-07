@@ -174,13 +174,15 @@ class MetadataSql:
             if not isinstance(exchange, str) and isinstance(exchange, Container) and ticker is not None:
                 assert len(exchange) == len(ticker), "Exchange must be a single value or the same length as ticker."
             filter_fields["exchange"] = exchange
+        query_fields = ["ticker", "exchange"] + [f for f in query_fields if f not in ["ticker", "exchange"]]
+        common_plus_ticker_exchange = ["ticker", "exchange"] + COMMON_METADATA_COLUMNS
         query_fields_common = (
-            ["ticker", "exchange"] + [f for f in query_fields if f in COMMON_METADATA_COLUMNS]
+            [f for f in query_fields if f in common_plus_ticker_exchange]
             if query_fields != "*"
             else "*"
         )
         filter_fields_common = {
-            k: v for k, v in filter_fields.items() if k in ["ticker", "exchange"] + COMMON_METADATA_COLUMNS
+            k: v for k, v in filter_fields.items() if k in common_plus_ticker_exchange
         }
         all_fields_common = (
             len(query_fields_common) == len(query_fields)
@@ -190,7 +192,7 @@ class MetadataSql:
         if not (query_fields == "*" or "inst_type" in query_fields):
             query_fields_common.append("inst_type")
         common_df = self._manager.read_data(
-            "instruments", query_fields=query_fields_common, filter_fields=filter_fields
+            "instruments", query_fields=query_fields_common, filter_fields=filter_fields_common
         )
         self._convert_datetime_columns(common_df)
         if common_df.empty:
@@ -270,11 +272,6 @@ class MetadataSql:
         }
         filter_fields_type = {k: v for k, v in filter_fields.items() if k in TYPE_METADATA_COLUMNS.get(inst_type, [])}
 
-        # if inst_type in {"FUT", "OPT"}:
-        #     df = self._manager.read_data(
-        #         f"instruments_{inst_type.lower()}", query_fields=query_fields, filter_fields=filter_fields
-        #     )
-        # elif (
         if (
             (query_fields != "*" or inst_type not in TYPE_METADATA_COLUMNS)
             and not bool(query_fields_type)
