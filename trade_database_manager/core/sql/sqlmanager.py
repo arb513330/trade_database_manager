@@ -426,13 +426,68 @@ class SqlManager:
 
         return pd.concat(frames, ignore_index=True)
 
-    def _read_data_across_tables_batched(self, tables, query_fields_rel, filter_fields, stmt_builder):
+    @staticmethod
+    def _build_filtered_table_source(table, filter_fields):
+        if not filter_fields:
+            return table
+        stmt = select(table)
+        conditions = SqlManager._build_conditions(table, filter_fields)
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+        return stmt.subquery(table.name)
+
+    @staticmethod
+    def _build_query_fields_rel_across_tables(table_sources, query_fields):
+        if query_fields == "*":
+            return [text("*")]
+
+        query_fields_rel = []
+        for table_name, colnames in query_fields.items():
+            if isinstance(colnames, str):
+                query_fields_rel.append(table_sources[table_name].c[colnames])
+            else:
+                query_fields_rel.extend([table_sources[table_name].c[colname] for colname in colnames])
+        return query_fields_rel
+
+    def _read_data_across_tables_once(
+        self,
+        tables,
+        joined_columns,
+        query_fields,
+        filter_fields,
+        unique=False,
+    ):
+        table_sources = {
+            table_name: self._build_filtered_table_source(table, (filter_fields or {}).get(table_name))
+            for table_name, table in tables.items()
+        }
+
+        joined_table = reduce(
+            lambda x, y: x.join(
+                y,
+                and_(*[x.c[col] == y.c[col] for col in joined_columns]),
+                full=True,
+            ),
+            table_sources.values(),
+        )
+
+        stmt = select(*self._build_query_fields_rel_across_tables(table_sources, query_fields))
+        if unique:
+            stmt = stmt.distinct()
+        stmt = stmt.select_from(joined_table)
+        res = self._execute(stmt)
+        return pd.DataFrame(res.fetchall(), columns=res.keys())
+
+    def _read_data_across_tables_batched(self, tables, joined_columns, query_fields, filter_fields, unique=False):
         """Execute a cross-table read query with automatic batching of large IN-clause values."""
         if not filter_fields:
-            stmt = select(*query_fields_rel)
-            stmt = stmt_builder(stmt)
-            res = self._execute(stmt)
-            return pd.DataFrame(res.fetchall(), columns=res.keys())
+            return self._read_data_across_tables_once(
+                tables,
+                joined_columns=joined_columns,
+                query_fields=query_fields,
+                filter_fields=None,
+                unique=unique,
+            )
 
         # Build flat index of all IN-list fields across all tables
         # Each entry: (table_name, field, values)
@@ -446,10 +501,13 @@ class SqlManager:
                     scalar_entries[(table_name, field)] = values
 
         if not in_entries:
-            stmt = select(*query_fields_rel)
-            stmt = stmt_builder(stmt)
-            res = self._execute(stmt)
-            return pd.DataFrame(res.fetchall(), columns=res.keys())
+            return self._read_data_across_tables_once(
+                tables,
+                joined_columns=joined_columns,
+                query_fields=query_fields,
+                filter_fields=filter_fields,
+                unique=unique,
+            )
 
         # Compute safe per-field batch size to stay under _MAX_SQL_PARAMS total
         num_in_fields = len(in_entries)
@@ -465,13 +523,15 @@ class SqlManager:
                 chunk_filter_fields.setdefault(tbl, {})[fld] = val
             for (tbl, fld), vals in in_entries.items():
                 chunk_filter_fields.setdefault(tbl, {})[fld] = vals[offset : offset + per_field_limit]
-            stmt = select(*query_fields_rel)
-            stmt = stmt_builder(stmt)
-            conditions = self._build_conditions_across_tables(tables, chunk_filter_fields)
-            if conditions:
-                stmt = stmt.where(and_(*conditions))
-            res = self._execute(stmt)
-            frames.append(pd.DataFrame(res.fetchall(), columns=res.keys()))
+            frames.append(
+                self._read_data_across_tables_once(
+                    tables,
+                    joined_columns=joined_columns,
+                    query_fields=query_fields,
+                    filter_fields=chunk_filter_fields,
+                    unique=unique,
+                )
+            )
             offset += per_field_limit
 
         return pd.concat(frames, ignore_index=True)
@@ -501,27 +561,13 @@ class SqlManager:
         meta = MetaData()
         tables = {table_name: Table(table_name, meta, autoload_with=self.engine) for table_name in table_names}
 
-        joined_table = reduce(
-            lambda x, y: x.join(y, and_(*[x.columns[col] == y.columns[col] for col in joined_columns])),
-            tables.values(),
+        return self._read_data_across_tables_batched(
+            tables,
+            joined_columns=joined_columns,
+            query_fields=query_fields,
+            filter_fields=filter_fields,
+            unique=unique,
         )
-
-        query_fields_rel = []
-        if query_fields != "*":
-            for table_name, colnames in query_fields.items():
-                if isinstance(colnames, str):
-                    query_fields_rel.append(tables[table_name].columns[colnames])
-                else:
-                    query_fields_rel.extend([tables[table_name].columns[colname] for colname in colnames])
-        else:
-            query_fields_rel = [text("*")]
-
-        def stmt_builder(stmt):
-            if unique:
-                stmt = stmt.distinct()
-            return stmt.select_from(joined_table)
-
-        return self._read_data_across_tables_batched(tables, query_fields_rel, filter_fields, stmt_builder)
 
     def _read_extremum_in_group(
         self,
