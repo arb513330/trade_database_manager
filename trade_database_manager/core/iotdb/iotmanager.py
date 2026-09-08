@@ -312,6 +312,14 @@ class IoTManager:
         tag_set = set(symbol_columns or []) | set(indexed_columns or []) | set(dedup_keys or [])
         self._execute_sql(self._build_create_sql(table_name, columns, designated_timestamp, tag_set))
 
+    def add_columns(self, table_name: str, columns: Sequence[tuple[str, type]]) -> None:
+        """Add one or more FIELD columns to an existing table."""
+        _check_identifier(table_name)
+        for column_name, py_type in columns:
+            _check_identifier(column_name)
+            column_type = infer_iotdb_type(py_type)
+            self._execute_sql(f"ALTER TABLE {self._q(table_name)} ADD COLUMN {column_name} {column_type} FIELD")
+
     def insert_column(self, table_name: str, column_name: str, column_type: str):
         self._execute_sql(f"ALTER TABLE {self._q(table_name)} ADD COLUMN {column_name} {column_type} FIELD")
 

@@ -47,6 +47,14 @@ class IntervalTimeSeriesManager:
             indexed_columns=["full_symbol"],
         )
 
+    def add_columns(self, table_name: str, fields: Sequence[tuple[str, type]]) -> None:
+        if not self.qm.table_exists(table_name):
+            raise ValueError(f"Table {table_name} does not exist. Please create it first.")
+        extra_fields = [f for f in fields if f[0] not in {"timestamp", "full_symbol"}]
+        if not extra_fields:
+            return
+        self.qm.add_columns(table_name=table_name, columns=extra_fields)
+
     def upsert(self, table_name: str, df: pd.DataFrame):
         assert isinstance(df.index, pd.MultiIndex) and set(df.index.names) == {
             "timestamp",
