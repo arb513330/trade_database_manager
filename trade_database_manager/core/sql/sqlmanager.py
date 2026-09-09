@@ -456,19 +456,28 @@ class SqlManager:
         query_fields,
         filter_fields,
         unique=False,
+        join_type: str = "full",
     ):
+        if join_type not in {"full", "left", "inner"}:
+            raise ValueError(f"Unsupported join_type: {join_type}")
         table_sources = {
             table_name: self._build_filtered_table_source(table, (filter_fields or {}).get(table_name))
             for table_name, table in tables.items()
         }
+        table_source_values = list(table_sources.values())
+        if not table_source_values:
+            return pd.DataFrame()
+        left_source = table_source_values[0]
 
         joined_table = reduce(
             lambda x, y: x.join(
                 y,
                 and_(*[x.c[col] == y.c[col] for col in joined_columns]),
-                full=True,
+                full=(join_type == "full"),
+                isouter=(join_type == "left"),
             ),
-            table_sources.values(),
+            table_source_values[1:],
+            left_source,
         )
 
         stmt = select(*self._build_query_fields_rel_across_tables(table_sources, query_fields))
@@ -478,7 +487,9 @@ class SqlManager:
         res = self._execute(stmt)
         return pd.DataFrame(res.fetchall(), columns=res.keys())
 
-    def _read_data_across_tables_batched(self, tables, joined_columns, query_fields, filter_fields, unique=False):
+    def _read_data_across_tables_batched(
+        self, tables, joined_columns, query_fields, filter_fields, unique=False, join_type: str = "full"
+    ):
         """Execute a cross-table read query with automatic batching of large IN-clause values."""
         if not filter_fields:
             return self._read_data_across_tables_once(
@@ -487,6 +498,7 @@ class SqlManager:
                 query_fields=query_fields,
                 filter_fields=None,
                 unique=unique,
+                join_type=join_type,
             )
 
         # Build flat index of all IN-list fields across all tables
@@ -507,6 +519,7 @@ class SqlManager:
                 query_fields=query_fields,
                 filter_fields=filter_fields,
                 unique=unique,
+                join_type=join_type,
             )
 
         # Compute safe per-field batch size to stay under _MAX_SQL_PARAMS total
@@ -530,6 +543,7 @@ class SqlManager:
                     query_fields=query_fields,
                     filter_fields=chunk_filter_fields,
                     unique=unique,
+                    join_type=join_type,
                 )
             )
             offset += per_field_limit
@@ -543,6 +557,7 @@ class SqlManager:
         query_fields: QUERYFIELD_TYPE = "*",
         filter_fields: FILTERFIELD_TYPE = None,
         unique=False,
+        join_type: str = "full",
     ):
         """
         Reads data from multiple tables.
@@ -567,6 +582,7 @@ class SqlManager:
             query_fields=query_fields,
             filter_fields=filter_fields,
             unique=unique,
+            join_type=join_type,
         )
 
     def _read_extremum_in_group(

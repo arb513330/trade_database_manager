@@ -60,6 +60,11 @@ class IntervalTimeSeriesManager:
             "timestamp",
             "full_symbol",
         }, "DataFrame index must be a MultiIndex with timestamp and full_symbol"
+        if df.index.hasnans:
+            raise ValueError(
+                "DataFrame index contains NaN in timestamp/full_symbol; "
+                "remove or fill missing index values before upsert"
+            )
 
         if not self.qm.table_exists(table_name):
             raise ValueError(f"Table {table_name} does not exist. Please create it first.")
@@ -96,6 +101,8 @@ class IntervalTimeSeriesManager:
             filter_fields=filter_fields,
             timezone=timezone,
         )
+        if not result.empty and {"timestamp", "full_symbol"}.issubset(result.columns):
+            result = result.dropna(subset=["timestamp", "full_symbol"])
         if not result.empty and "timestamp" in result.columns and "full_symbol" in result.columns:
             result = result.set_index(["timestamp", "full_symbol"])
         return result
@@ -123,6 +130,8 @@ class IntervalTimeSeriesManager:
             search_start=search_start,
             timezone=timezone,
         )
+        if not result.empty and {"timestamp", "full_symbol"}.issubset(result.columns):
+            result = result.dropna(subset=["timestamp", "full_symbol"])
         if not result.empty and "timestamp" in result.columns and "full_symbol" in result.columns:
             result = result.set_index("full_symbol").rename(columns={"timestamp": "latest_timestamp"})
         return result

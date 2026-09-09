@@ -290,10 +290,13 @@ class MetadataSql:
                 joined_columns=["ticker", "exchange"],
                 query_fields=query_fields_cross,
                 filter_fields=filter_fields_cross,
+                join_type="left",
             )
 
         if isinstance(df.columns, pd.Index):
             df = df.loc[:, ~df.columns.duplicated()]
+        if {"ticker", "exchange"}.issubset(df.columns):
+            df = df.dropna(subset=["ticker", "exchange"])
         if len(df.columns) > 2:
             df.set_index(["ticker", "exchange"], inplace=True)
         self._convert_datetime_columns(df)
