@@ -1,24 +1,21 @@
 # @Time    : 2026/8/5
 # @Author  : YQ Tsui
-# @File    : interval_base.py
-# @Purpose : Base class for interval-based time-series data management
+# @File    : interval_base_iotdb.py
+# @Purpose : IoTDB-backed interval time-series base, preserved for kline_iotdb
 
 from collections.abc import Sequence
 
 import pandas as pd
 
-from ..core.timescale.timescalemanager import TimescaleManager
+from ..core.iotdb.iotmanager import IoTManager
 
 
 class IntervalTimeSeriesManager:
-    """Manage interval timeseries data, such as K-lines in TimescaleDB, one table per inst_type + interval.
-
-    Table format: ``{inst_type}_{interval}`` inside the configured TimescaleDB schema,
-    e.g. ``tseries.FUT_1m``, ``tseries.STK_1d``.
+    """Manage interval timeseries data in Apache IoTDB, one table per inst_type + interval.
 
     This is a singleton class. Just call ``IntervalTimeSeriesManager()`` to get the instance.
 
-    :ivar TimescaleManager qm: The underlying TimescaleDB connection manager.
+    :ivar IoTManager qm: The underlying IoTDB connection manager.
     """
 
     _instance = None
@@ -27,7 +24,7 @@ class IntervalTimeSeriesManager:
     def __new__(cls):
         if not isinstance(cls._instance, cls):
             cls._instance = super(IntervalTimeSeriesManager, cls).__new__(cls)
-            cls._qm = TimescaleManager()
+            cls._qm = IoTManager()
             cls._instance.qm = cls._qm
         return cls._instance
 

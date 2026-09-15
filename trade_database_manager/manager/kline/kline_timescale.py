@@ -1,14 +1,14 @@
-# @Time    : 2026/8/5
+# @Time    : 2026/9/14
 # @Author  : YQ Tsui
-# @File    : kline_iotdb.py
-# @Purpose : K-line data management on Apache IoTDB
+# @File    : kline_timescale.py
+# @Purpose : K-line data management on TimescaleDB
 
 from collections.abc import Sequence
 
 import pandas as pd
 
 from ..typedefs import Interval
-from ..interval_base_iotdb import IntervalTimeSeriesManager
+from ..interval_base import IntervalTimeSeriesManager
 
 # Common to all instrument types.
 KLINE_COMMON_COLUMNS = [
@@ -31,10 +31,10 @@ KLINE_TYPE_EXTRA_COLUMNS = {
 
 
 class KLineManager:
-    """Manage OHLCV kline data in Apache IoTDB, one table per inst_type + interval.
+    """Manage OHLCV kline data in TimescaleDB, one table per inst_type + interval.
 
-    Table format: ``{inst_type}_{interval}`` inside the configured IoTDB database,
-    e.g. ``tradedata.FUT_1m``, ``tradedata.STK_1d``.
+    Table format: ``{inst_type}_{interval}`` inside the configured TimescaleDB schema,
+    e.g. ``tseries.FUT_1m``, ``tseries.STK_1d``.
 
     This is a singleton class. Just call ``KLineManager()`` to get the instance.
     """

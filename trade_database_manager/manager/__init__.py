@@ -8,7 +8,15 @@ from .metadata_sql.metadata_sql_cb import CBMetadataSql
 from .metadata_sql.metadata_sql_fut import FutMetadataSql
 
 from .kline.kline_iotdb import KLineManager
+from .kline.kline_timescale import KlineManager as KlineTimescaleManager
 
 from .interval_base import IntervalTimeSeriesManager
 
-__all__ = ("MetadataSql", "CBMetadataSql", "FutMetadataSql", "KLineManager", "IntervalTimeSeriesManager")
+__all__ = (
+    "MetadataSql",
+    "CBMetadataSql",
+    "FutMetadataSql",
+    "KLineManager",
+    "KlineTimescaleManager",
+    "IntervalTimeSeriesManager",
+)

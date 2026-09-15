@@ -4,5 +4,6 @@
 # @Purpose :
 
 from .kline_iotdb import KLineManager
+from .kline_timescale import KLineManager as KlineTimescaleManager
 
-__all__ = ["KLineManager"]
+__all__ = ["KLineManager", "KlineTimescaleManager"]
