@@ -9,6 +9,7 @@ import warnings
 from collections.abc import Container, Sequence
 from datetime import datetime
 from functools import partial
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -56,6 +57,7 @@ class TimescaleManager:
         self._database = CONFIG.get("sqldbname")
         self._schema = CONFIG.get("timescale_schema", "tseries")
         self._environment_ready = False
+        self._table_exists_cache: dict[str, bool] = {}
 
         sql_protocol = "postgresql" if importlib.util.find_spec("psycopg") is None else "postgresql+psycopg"
         connection_string = (
@@ -165,6 +167,12 @@ class TimescaleManager:
         )
         df = self._read_sql(sql, {"schema": self._schema, "table_name": table_name})
         return df["column_name"].astype(str).tolist()
+
+    def _cached_table_exists(self, table_name: str) -> bool:
+        key = (self._schema, table_name)
+        if key not in self._table_exists_cache:
+            self._table_exists_cache[key] = self.table_exists(table_name)
+        return self._table_exists_cache[key]
 
     # ------------------------------------------------------------------ schema
 
@@ -286,6 +294,54 @@ class TimescaleManager:
             df[designated_timestamp] = series.map(to_naive)
         return df
 
+    def _prepare_copy_value(self, value):
+        value = self._normalize_scalar(value)
+        if isinstance(value, pd.Timestamp):
+            return value.to_pydatetime()
+        if isinstance(value, np.datetime64):
+            return pd.Timestamp(value).to_pydatetime()
+        if isinstance(value, tuple):
+            return list(value)
+        return value
+
+    def _insert_large_dataframe_via_copy(
+        self,
+        table_name: str,
+        df: pd.DataFrame,
+        designated_timestamp: str,
+        conflict_columns: Sequence[str],
+    ) -> int:
+        if importlib.util.find_spec("psycopg") is None:
+            raise RuntimeError("psycopg is required for COPY-based bulk inserts")
+
+        stage_name = f"stg_{table_name}_{uuid4().hex}"
+        columns = list(df.columns)
+        quoted_columns = [self._col(column) for column in columns]
+        quoted_conflict_columns = [self._col(column) for column in conflict_columns]
+        target_quoted = self._q(table_name)
+        stage_quoted = f'"{stage_name}"'
+        copy_sql = f"COPY {stage_quoted} ({', '.join(quoted_columns)}) FROM STDIN"
+        set_clauses = [
+            f'{self._col(column)} = EXCLUDED.{self._col(column)}'
+            for column in columns
+            if column not in conflict_columns
+        ]
+        insert_sql = (
+            f"INSERT INTO {target_quoted} ({', '.join(quoted_columns)}) "
+            f"SELECT {', '.join(quoted_columns)} FROM {stage_quoted} "
+            f"ON CONFLICT ({', '.join(quoted_conflict_columns)}) DO UPDATE SET {', '.join(set_clauses)}"
+        )
+
+        with self._engine.begin() as conn:
+            conn.execute(text(f"CREATE TEMP TABLE {stage_quoted} AS TABLE {target_quoted} WITH NO DATA"))
+            dbapi_conn = conn.connection
+            with dbapi_conn.cursor() as cur:
+                with cur.copy(copy_sql) as copy:
+                    for row in df.itertuples(index=False, name=None):
+                        copy.write_row([self._prepare_copy_value(value) for value in row])
+            conn.execute(text(insert_sql))
+        return len(df)
+
     def insert(
         self,
         table_name: str,
@@ -300,7 +356,7 @@ class TimescaleManager:
         _check_identifier(table_name)
         _check_identifier(designated_timestamp)
         self._ensure_environment()
-        if not self.table_exists(table_name):
+        if not self._cached_table_exists(table_name):
             raise ValueError(f"Table {table_name} does not exist. Please create it first.")
 
         df = self._prepare_timestamp_column(df, designated_timestamp)
@@ -312,6 +368,10 @@ class TimescaleManager:
             _check_identifier(column)
             if column != designated_timestamp:
                 conflict_columns.append(column)
+        conflict_columns = list(dict.fromkeys(conflict_columns))
+
+        if len(df) >= 10000:
+            return self._insert_large_dataframe_via_copy(table_name, df, designated_timestamp, conflict_columns)
 
         method = partial(_insert_on_conflict_update, indexes=conflict_columns)
         df.to_sql(
