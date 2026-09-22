@@ -133,5 +133,7 @@ class IntervalTimeSeriesManager:
         if not result.empty and {"timestamp", "full_symbol"}.issubset(result.columns):
             result = result.dropna(subset=["timestamp", "full_symbol"])
         if not result.empty and "timestamp" in result.columns and "full_symbol" in result.columns:
+            result["timestamp"] = pd.to_datetime(result["timestamp"])
             result = result.set_index("full_symbol").rename(columns={"timestamp": "latest_timestamp"})
+
         return result

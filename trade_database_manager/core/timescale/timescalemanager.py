@@ -189,6 +189,32 @@ class TimescaleManager:
         df = self._read_sql(sql, {"schema": self._schema, "table_name": table_name})
         return bool(df.iloc[0, 0])
 
+    def ensure_index(
+        self,
+        table_name: str,
+        columns: Sequence[str],
+        name: str | None = None,
+        order_by: dict[str, str] | None = None,
+    ) -> None:
+        """Create a single-column or composite index if it does not already exist."""
+        _check_identifier(table_name)
+        self._ensure_environment()
+        cols = [str(column) for column in columns]
+        for column in cols:
+            _check_identifier(column)
+
+        if order_by is None:
+            order_by = {column: "ASC" for column in cols}
+        index_cols_sql = ", ".join(
+            f"{self._col(column)} {order_by.get(column, 'ASC')}" for column in cols
+        )
+
+        index_name = name or f"idx_{table_name}_{'_'.join(cols)}"
+        if len(cols) > 1:
+            suffix = "_" + "_".join(order_by.get(column, "ASC").lower() for column in cols)
+            index_name = f"idx_{table_name}_{'_'.join(cols)}{suffix}"
+        self._execute(f'CREATE INDEX IF NOT EXISTS "{index_name}" ON {self._q(table_name)} ({index_cols_sql})')
+
     def create_table(
         self,
         table_name: str,
@@ -233,6 +259,13 @@ class TimescaleManager:
             _check_identifier(column)
             index_name = f"idx_{table_name}_{column}"
             self._execute(f'CREATE INDEX IF NOT EXISTS "{index_name}" ON {self._q(table_name)} ({self._col(column)})')
+
+        if "full_symbol" in column_names and designated_timestamp in column_names:
+            self.ensure_index(
+                table_name,
+                ["full_symbol", designated_timestamp],
+                order_by={"full_symbol": "ASC", designated_timestamp: "DESC"},
+            )
 
     def add_columns(self, table_name: str, columns: Sequence[tuple[str, type]]) -> None:
         _check_identifier(table_name)
@@ -661,24 +694,60 @@ class TimescaleManager:
         selected_cols = list(dict.fromkeys(partition_cols + requested_cols + [ts_col]))
         select_clause = ", ".join(self._col(col) for col in selected_cols)
 
-        conditions = []
-        params = {}
-        if search_start is not None:
-            key = f"p{len(params)}"
-            params[key] = self._normalize_scalar(search_start)
-            conditions.append(f"{self._col(ts_col)} >= :{key}")
-        filter_where, params = self._build_where(filter_fields, params=params)
-        if filter_where:
-            conditions.append(filter_where)
-        where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        def _query_one(batch_filter_fields):
+            conditions = []
+            params = {}
+            if search_start is not None:
+                key = f"p{len(params)}"
+                params[key] = self._normalize_scalar(search_start)
+                conditions.append(f"{self._col(ts_col)} >= :{key}")
+            filter_where, params = self._build_where(batch_filter_fields, params=params)
+            if filter_where:
+                conditions.append(filter_where)
+            where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
 
-        distinct_on = ", ".join(self._col(col) for col in partition_cols)
-        order_by = ", ".join(self._col(col) for col in partition_cols)
-        order_by += f", {self._col(ts_col)} DESC"
+            distinct_on = ", ".join(self._col(col) for col in partition_cols)
+            order_by = ", ".join(self._col(col) for col in partition_cols)
+            order_by += f", {self._col(ts_col)} DESC"
 
-        sql = (
-            f"SELECT DISTINCT ON ({distinct_on}) {select_clause} "
-            f"FROM {self._q(table_name)}{where_clause} "
-            f"ORDER BY {order_by}"
-        )
-        return self._read_sql(sql, params)
+            sql = (
+                f"SELECT DISTINCT ON ({distinct_on}) {select_clause} "
+                f"FROM {self._q(table_name)}{where_clause} "
+                f"ORDER BY {order_by}"
+            )
+            return self._read_sql(sql, params)
+
+        if not filter_fields:
+            return _query_one(None)
+
+        sequence_fields = {
+            field: values
+            for field, values in filter_fields.items()
+            if isinstance(values, Container) and not isinstance(values, (str, bytes))
+        }
+        if not sequence_fields:
+            return _query_one(filter_fields)
+
+        max_values_per_query = 1024
+        batch_frames = []
+        field_names = list(sequence_fields.keys())
+        field_chunks = {
+            field: [list(values)[i : i + max_values_per_query] for i in range(0, len(values), max_values_per_query)]
+            for field, values in sequence_fields.items()
+        }
+        chunk_count = max(len(chunks) for chunks in field_chunks.values())
+
+        for idx in range(chunk_count):
+            batch_filter_fields = {
+                key: value for key, value in (filter_fields or {}).items() if key not in sequence_fields
+            }
+            for field in field_names:
+                chunks = field_chunks[field]
+                if idx < len(chunks):
+                    batch_filter_fields[field] = chunks[idx]
+            batch_frames.append(_query_one(batch_filter_fields))
+
+        result = pd.concat(batch_frames, ignore_index=True)
+        if not result.empty:
+            result = result.drop_duplicates()
+        return result

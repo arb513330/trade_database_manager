@@ -3,8 +3,8 @@
 # @File    : sqlmanager.py
 # @Purpose : Core SQL operations
 
-import re
 import importlib.util
+import re
 from collections.abc import Container
 from functools import partial, reduce
 from typing import Any, Literal
@@ -13,7 +13,6 @@ from collections.abc import Callable, Sequence
 import pandas as pd
 from sqlalchemy import (
     Column,
-    Executable,
     Index,
     MetaData,
     PrimaryKeyConstraint,
@@ -27,6 +26,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased, sessionmaker
+from sqlalchemy.sql import Executable
 from sqlalchemy.types import TypeEngine
 
 from ...config import CONFIG
@@ -35,6 +35,17 @@ from .utils import infer_sql_type
 
 
 _MAX_SQL_PARAMS = 65534  # psycopg hard limit is 65535; leave 1 for safety
+_MAX_SQL_LITERAL_BYTES = 64 * 1024 * 1024
+
+
+def _estimate_sql_literal_bytes(value: Any) -> int:
+    if value is None:
+        return 4
+    if isinstance(value, bytes):
+        return len(value) * 2 + 4
+    if isinstance(value, str):
+        return len(value.encode("utf-8")) + value.count("'") + 2
+    return len(str(value).encode("utf-8")) + 2
 
 
 def _insert_on_conflict_update(table, conn, keys, data_iter, indexes):
@@ -109,6 +120,20 @@ class SqlManager:
             else:
                 conditions.append(table.columns[field] == filter_values)
         return conditions
+
+    @staticmethod
+    def _compute_in_field_batch_limit(in_fields: dict[str, Sequence[Any]]) -> int:
+        num_in_fields = len(in_fields)
+        param_limit = max(1, _MAX_SQL_PARAMS // max(1, num_in_fields))
+        if not in_fields:
+            return param_limit
+
+        largest_value_bytes = max(
+            (_estimate_sql_literal_bytes(value) for values in in_fields.values() for value in values),
+            default=1,
+        )
+        byte_limit = max(1, _MAX_SQL_LITERAL_BYTES // max(1, num_in_fields * largest_value_bytes))
+        return max(1, min(param_limit, byte_limit))
 
     def add_index(self, table_name: str, columns: str | list[str], unique: bool = True):
         """
@@ -396,16 +421,7 @@ class SqlManager:
             res = self._execute(stmt)
             return pd.DataFrame(res.fetchall(), columns=res.keys())
 
-        # Sort by descending length so we chunk the longest lists first
-        sorted_fields = sorted(in_fields.items(), key=lambda kv: len(kv[1]), reverse=True)
-
-        # Compute total params per record: each IN-list field adds 1 param, scalar fields add 0
-        # The batch size is bounded by _MAX_SQL_PARAMS across all IN lists
-        num_in_fields = len(sorted_fields)
-        # How many values can we take from each IN list per batch so that
-        # sum(batch_sizes) <= _MAX_SQL_PARAMS
-        # A safe per-field batch size when all fields need equal shares
-        per_field_limit = max(1, _MAX_SQL_PARAMS // max(1, num_in_fields))
+        per_field_limit = self._compute_in_field_batch_limit(in_fields)
 
         # Build batches: slice all IN-lists concurrently until all are consumed
         field_values = {field: list(values) for field, values in in_fields.items()}
@@ -522,9 +538,10 @@ class SqlManager:
                 join_type=join_type,
             )
 
-        # Compute safe per-field batch size to stay under _MAX_SQL_PARAMS total
-        num_in_fields = len(in_entries)
-        per_field_limit = max(1, _MAX_SQL_PARAMS // max(1, num_in_fields))
+        grouped_in_entries = {}
+        for (_table_name, field), values in in_entries.items():
+            grouped_in_entries[f"{_table_name}.{field}"] = values
+        per_field_limit = self._compute_in_field_batch_limit(grouped_in_entries)
 
         max_field_len = max(len(vals) for vals in in_entries.values())
 
