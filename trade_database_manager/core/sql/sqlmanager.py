@@ -392,7 +392,8 @@ class SqlManager:
 
         if not in_fields:
             # No IN lists at all — single query
-            stmt = _make_stmt()
+            conditions = self._build_conditions(table, scalar_fields)
+            stmt = _make_stmt(conditions)
             res = self._execute(stmt)
             return pd.DataFrame(res.fetchall(), columns=res.keys())
 
